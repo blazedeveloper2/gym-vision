@@ -71,6 +71,7 @@ const state = {
   handConns: null,
   lastVideoTime: -1,
   lastTs: 0,
+  detections: 0,
   frames: 0,
   fpsSince: performance.now(),
   noPersonSince: null,
@@ -311,7 +312,29 @@ async function openVideo(src, name = 'video') {
     v.onloadeddata = null;
     v.onerror = null;
   }
+  // Hold on the first frame until tracking has warmed up (see playAfterWarmup).
+  v.pause();
+  if (v.currentTime !== 0) {
+    await new Promise((resolve) => {
+      v.addEventListener('seeked', resolve, { once: true });
+      v.currentTime = 0;
+    });
+  }
   syncPlayButton();
+}
+
+/**
+ * The first detection compiles GPU shaders and can block for a second or two.
+ * Wait until the main loop has analyzed the paused first frame, then start
+ * playback, so the start of a clip isn't skipped.
+ */
+async function playAfterWarmup() {
+  const before = state.detections;
+  const deadline = performance.now() + 8000;
+  while (state.detections === before && performance.now() < deadline) {
+    await new Promise((r) => requestAnimationFrame(r));
+  }
+  els.video.play().catch(() => {});
 }
 
 function applyMirror() {
@@ -379,6 +402,7 @@ async function begin(kind, file) {
 
   if (settings.hands && settings.mode === 'tracker') ensureHands();
   startRunning();
+  if (kind === 'file') playAfterWarmup();
   keepAwake();
 }
 
@@ -428,6 +452,7 @@ function loop() {
     onDetectError(err);
     return;
   }
+  state.detections++;
 
   let hands = null;
   if (settings.mode === 'tracker' && settings.hands && state.hands) {
@@ -924,6 +949,7 @@ function init() {
       await ensurePose();
       await openVideo(url, url);
       startRunning();
+      playAfterWarmup();
     },
   };
 
