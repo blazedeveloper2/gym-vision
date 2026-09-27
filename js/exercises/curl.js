@@ -1,0 +1,113 @@
+import { P, vis, toPx, angleFn, Ema, FacingTracker, mid, leanDeg } from '../geometry.js';
+import { RepCounter } from './base.js';
+
+const ARMS = [
+  { sh: P.leftShoulder, el: P.leftElbow, wr: P.leftWrist, hip: P.leftHip },
+  { sh: P.rightShoulder, el: P.rightElbow, wr: P.rightWrist, hip: P.rightHip },
+];
+
+/**
+ * Bicep curls — both arms together or alternating. Progress follows whichever
+ * arm is curling (elbow ~155° straight → ~60° at the top). Checks that the
+ * upper arm stays by the side and the body doesn't swing.
+ */
+export class CurlAnalyzer extends RepCounter {
+  static defaults = {
+    restAngle: 155,
+    topAngle: 60,
+    maxSwing: 35, // upper arm forward of the torso (deg)
+    maxSway: 15, // torso lean change from the start (deg)
+  };
+  static statLabels = ['Elbow', 'Upper arm'];
+  static meterLabel = 'curl';
+  static tempo = ['↑', '↓'];
+  static text = {
+    noPerson: 'Step into view — side-on or facing the camera',
+    ready: 'Ready — curl the weight up',
+    going: (pct) => `Curl… ${pct}%`,
+    reached: 'Squeeze at the top — now lower slowly',
+    notCounted: 'Not counted — curl all the way up',
+    notCountedVoice: 'All the way up',
+    incomplete: { rep: 'lower all the way down between reps', voice: 'Full extension' },
+    faults: {
+      swing: { live: 'Keep your elbows pinned to your sides', rep: 'elbow drifted forward', voice: 'Elbows in', cue: 'Elbows in' },
+      sway: { live: 'Don’t swing your body — keep your torso still', rep: 'body swung', voice: 'No swinging', cue: 'Stay still' },
+    },
+  };
+
+  reset() {
+    this.facingT = new FacingTracker();
+    super.reset();
+  }
+
+  resetFilters() {
+    this.elbowEmas = [new Ema(0.5), new Ema(0.5)];
+    this.swingEmas = [new Ema(0.4), new Ema(0.4)];
+    this.leanEma = new Ema(0.4);
+    this.restLean = null;
+  }
+
+  measure(frame, source) {
+    const o = this.opts;
+    const { lm } = frame;
+    const front = this.facingT.update(frame) === 'front';
+    const angle = angleFn(frame, source === 'auto' ? (front ? '3d' : '2d') : source);
+
+    const arms = ARMS.map((a, i) => {
+      if ([a.sh, a.el, a.wr, a.hip].some((j) => vis(lm[j]) < 0.5)) return null;
+      const elbow = this.elbowEmas[i].next(angle(a.sh, a.el, a.wr));
+      const swing = this.swingEmas[i].next(angle(a.el, a.sh, a.hip));
+      return { ...a, elbow, swing, p: (o.restAngle - elbow) / (o.restAngle - o.topAngle) };
+    });
+    const seen = arms.filter(Boolean);
+    if (seen.length === 0) return { status: 'partial', message: 'Make sure your arm and hip are in view' };
+
+    const px = (i) => toPx(lm[i], frame.w, frame.h);
+    const leanNow = leanDeg(px(seen[0].sh), px(seen[0].hip));
+    if (leanNow > 45) return { status: 'setup', message: 'Stand up tall to start' };
+    const lean = this.leanEma.next(leanNow);
+    if (this.phase !== 'down' || this.restLean == null) this.restLean = lean;
+
+    const active = seen.reduce((a, b) => (b.p > a.p ? b : a));
+    const progress = active.p;
+    const faults = [];
+    if (progress > 0.2 && active.swing > o.maxSwing) faults.push('swing');
+    if (progress > 0.2 && Math.abs(lean - this.restLean) > o.maxSway) faults.push('sway');
+
+    const e = Math.round(active.elbow);
+    const overlay = [{ type: 'dash', a: mid(lm[P.leftShoulder], lm[P.rightShoulder]), b: mid(lm[P.leftHip], lm[P.rightHip]), tone: 'fault:sway' }];
+    for (const arm of seen) {
+      const tone = arm === active ? 'go' : 'neutral';
+      overlay.push(
+        { type: 'seg', a: arm.sh, b: arm.el, tone: arm === active ? 'fault:swing' : 'neutral', w: 6 },
+        { type: 'seg', a: arm.el, b: arm.wr, tone },
+        { type: 'dots', ids: [arm.el, arm.wr], tone },
+      );
+    }
+    overlay.push({ type: 'arc', a: active.sh, b: active.el, c: active.wr, tone: 'go', label: `${e}°` });
+
+    return {
+      status: 'active',
+      progress,
+      faults,
+      elbow: active.elbow,
+      stats: [
+        { label: 'Elbow', value: `${e}°` },
+        { label: 'Upper arm', value: `${Math.round(active.swing)}°`, fault: 'swing' },
+      ],
+      overlay,
+    };
+  }
+
+  repState(m) {
+    return { minElbow: m.elbow };
+  }
+
+  trackRep(r, m) {
+    r.minElbow = Math.min(r.minElbow, m.elbow);
+  }
+
+  repDetail(r) {
+    return `elbow ${Math.round(r.minElbow)}° at the top`;
+  }
+}

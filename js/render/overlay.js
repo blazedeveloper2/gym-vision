@@ -1,4 +1,4 @@
-import { P, vis } from './geometry.js';
+import { P, vis } from '../geometry.js';
 
 export const COLORS = {
   left: '#ff9f43',
@@ -9,7 +9,10 @@ export const COLORS = {
   warn: '#facc15',
   bad: '#ff5a6e',
   hand: '#f472b6',
+  neutral: 'rgba(255,255,255,0.72)',
 };
+
+const TONE = { active: COLORS.accent, good: COLORS.good, warn: COLORS.warn, bad: COLORS.bad, neutral: COLORS.neutral };
 
 // [from, to, group] — group picks the colour: l = person's left, r = right, c = torso.
 const SEGMENTS = [
@@ -75,6 +78,119 @@ export class Renderer {
   pt(lm) {
     const x = this.mirror ? 1 - lm.x : lm.x;
     return { x: x * this.canvas.width, y: lm.y * this.canvas.height };
+  }
+
+  /** Frame-pixel point (unmirrored) → canvas point. */
+  framePt(p) {
+    return { x: this.mirror ? this.canvas.width - p.x : p.x, y: p.y };
+  }
+
+  /** Canvas point → frame-pixel point (for taps). */
+  toFrame(p) {
+    return { x: this.mirror ? this.canvas.width - p.x : p.x, y: p.y };
+  }
+
+  /**
+   * Draws an exercise overlay spec: items of type seg | dash | arc |
+   * angleLabel | label | dots, whose points are landmark indices or
+   * normalized {x, y}.
+   */
+  drawSpec(lm, items) {
+    if (!items) return;
+    const get = (a) => (typeof a === 'number' ? lm[a] : a);
+    for (const it of items) {
+      const color = TONE[it.tone] || COLORS.neutral;
+      switch (it.type) {
+        case 'seg':
+          this.segment(get(it.a), get(it.b), color, it.w || 7);
+          break;
+        case 'dash':
+          this.dashed(get(it.a), get(it.b), color, it.w || 2);
+          break;
+        case 'arc':
+          this.arc(get(it.a), get(it.b), get(it.c), color);
+          if (it.label) this.angleLabel(get(it.a), get(it.b), get(it.c), it.label, color, { size: 15, offset: 30 });
+          break;
+        case 'angleLabel':
+          this.angleLabel(get(it.a), get(it.b), get(it.c), it.text, color, { size: it.size || 13 });
+          break;
+        case 'label': {
+          const p = this.pt(get(it.at));
+          this.label(p.x, p.y, it.text, color, it.size || 13);
+          break;
+        }
+        case 'dots':
+          for (const id of it.ids) this.dot(get(id), 5, color);
+          break;
+        default:
+          break;
+      }
+    }
+  }
+
+  /** Small name tags at frame-pixel points; tags that would overlap are skipped. */
+  tags(items) {
+    const { ctx } = this;
+    const u = this.unit;
+    const size = 11;
+    ctx.save();
+    ctx.font = `700 ${size * u}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
+    const placed = [];
+    for (const { at, text, color } of items) {
+      const p = this.framePt(at);
+      const w = ctx.measureText(text).width + 16 * u;
+      const h = (size + 11) * u;
+      const r = { x: p.x - w / 2, y: p.y - h / 2, w, h };
+      if (placed.some((q) => r.x < q.x + q.w && q.x < r.x + r.w && r.y < q.y + q.h && q.y < r.y + r.h)) continue;
+      placed.push(r);
+      this.label(p.x, p.y, text, color, size);
+    }
+    ctx.restore();
+  }
+
+  /** Tap marker: a pulsing ring at a frame-pixel point; fades out with `age` (ms). */
+  marker(at, color, age = 0) {
+    const { ctx } = this;
+    const u = this.unit;
+    const p = this.framePt(at);
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2.5 * u;
+    ctx.globalAlpha = Math.max(0, 1 - age / 2500);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, (10 + 4 * Math.sin(performance.now() / 160)) * u, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 3 * u, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  /** Measurement line between two frame-pixel points, with end caps and a label. */
+  measureLine(p1, p2, text, color = COLORS.accent) {
+    const { ctx } = this;
+    const u = this.unit;
+    const a = this.framePt(p1);
+    const b = this.framePt(p2);
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2 * u;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    const nx = -(b.y - a.y), ny = b.x - a.x;
+    const nl = Math.hypot(nx, ny) || 1;
+    for (const p of [a, b]) {
+      ctx.beginPath();
+      ctx.moveTo(p.x + (nx / nl) * 5 * u, p.y + (ny / nl) * 5 * u);
+      ctx.lineTo(p.x - (nx / nl) * 5 * u, p.y - (ny / nl) * 5 * u);
+      ctx.stroke();
+    }
+    ctx.restore();
+    if (text) this.label((a.x + b.x) / 2, (a.y + b.y) / 2 - 14 * u, text, color, 11);
   }
 
   skeleton(lm, { alpha = 1, width = 4 } = {}) {

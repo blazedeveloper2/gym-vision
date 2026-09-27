@@ -1,19 +1,32 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#0d1219"/>
-  <g transform="translate(0 -40)" fill="none" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M84 404H428" stroke="#2b3544" stroke-width="12"/>
-    <g stroke="#c6ff3d" stroke-width="26">
-      <path d="M168 250L174 322L178 392"/>
-      <path d="M168 250L300 300L424 360L440 392"/>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1a2410"/>
+      <stop offset="0.8" stop-color="#07090d"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <g stroke="rgba(255,255,255,0.84)" stroke-width="14">
+      <path d="M96 166V96H166M346 96H416V166M416 346V416H346M166 416H96V346"/>
     </g>
-    <circle cx="121" cy="231" r="32" fill="#c6ff3d"/>
-    <g fill="#0d1219" stroke="#ffffff" stroke-width="7">
-      <circle cx="168" cy="250" r="13"/>
-      <circle cx="174" cy="322" r="13"/>
-      <circle cx="178" cy="392" r="13"/>
-      <circle cx="300" cy="300" r="13"/>
-      <circle cx="362" cy="330" r="13"/>
-      <circle cx="424" cy="360" r="13"/>
+    <path d="M122 256H390" stroke="#c6ff3d" stroke-opacity="0.6" stroke-width="6"/>
+    <g stroke="#c6ff3d" stroke-opacity="0.45" stroke-width="44" filter="url(#glow)">
+      <path d="M160 128L205 168L256 214L307 168L352 128M256 196V300M178 408L216 356L256 300L296 356L334 408"/>
     </g>
+    <g stroke="#c6ff3d" stroke-width="24">
+      <path d="M160 128L205 168L256 214L307 168L352 128M256 196V300M178 408L216 356L256 300L296 356L334 408"/>
+    </g>
+  </g>
+  <circle cx="256" cy="146" r="34" fill="#c6ff3d"/>
+  <g fill="#0a0e0a" stroke="#fff" stroke-width="7">
+    <circle cx="160" cy="128" r="14"/><circle cx="352" cy="128" r="14"/>
+    <circle cx="205" cy="168" r="14"/><circle cx="307" cy="168" r="14"/>
+    <circle cx="256" cy="300" r="14"/>
+    <circle cx="216" cy="356" r="14"/><circle cx="296" cy="356" r="14"/>
+    <circle cx="178" cy="408" r="14"/><circle cx="334" cy="408" r="14"/>
   </g>
 </svg>

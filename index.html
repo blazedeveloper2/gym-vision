@@ -3,186 +3,183 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Gym Technique Helper</title>
-  <meta name="description" content="Live body tracking with push-up and squat technique feedback that runs entirely in your browser.">
+  <title>Gym Vision</title>
+  <meta name="description" content="AI body camera: live body tracking, body-part identifier, body measurements and exercise form feedback. Runs entirely on your device.">
   <meta name="theme-color" content="#07090d">
   <meta name="color-scheme" content="dark">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Gym Helper">
+  <meta name="apple-mobile-web-app-title" content="Gym Vision">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="stylesheet" href="css/styles.css">
+  <link rel="modulepreload" href="js/app.js">
   <script type="module" src="js/app.js"></script>
 </head>
 <body>
-<div id="app" data-mode="tracker">
+<div id="app" data-view="home" data-tool="">
 
-  <main class="stage" id="stage">
-    <video id="video" playsinline muted autoplay></video>
-    <canvas id="overlay"></canvas>
+  <!-- ============ HOME ============ -->
+  <main class="home" id="home">
+    <header class="home-head">
+      <img src="icons/icon.svg" alt="" width="44" height="44" class="home-logo">
+      <div class="home-title">
+        <h1>Gym Vision</h1>
+        <p>AI body camera</p>
+      </div>
+      <button type="button" class="icon-btn" data-action="settings" aria-label="Settings" title="Settings"></button>
+    </header>
+
+    <section class="home-section" aria-labelledby="toolsTitle">
+      <h2 class="section-title" id="toolsTitle">Body tools</h2>
+      <button type="button" class="tool-card hero" data-open="scan">
+        <span class="tool-art" data-fig="scan"></span>
+        <span class="tool-text">
+          <strong>Body Scan</strong>
+          <span>Live skeleton, glowing body outline and a body-part identifier. Tap any part to name it.</span>
+        </span>
+        <span class="chev" data-ico="chevron"></span>
+      </button>
+      <div class="tool-row">
+        <button type="button" class="tool-card" data-open="measure">
+          <span class="tool-art small" data-fig="measure"></span>
+          <strong>Measure</strong>
+          <span>Arms, chest, waist, legs. Track your growth.</span>
+        </button>
+        <button type="button" class="tool-card" data-action="analyze">
+          <span class="tool-art small" data-fig="video"></span>
+          <strong>Analyze video</strong>
+          <span>Check a clip you recorded.</span>
+        </button>
+      </div>
+    </section>
+
+    <section class="home-section" aria-labelledby="exTitle">
+      <h2 class="section-title" id="exTitle">Exercises <span class="count" id="exCount"></span></h2>
+      <div class="ex-grid" id="exGrid"></div>
+    </section>
+
+    <footer class="home-foot">
+      <div class="install" id="installHint" hidden>
+        <b>Install:</b> tap <span data-ico="share" class="inline-ico"></span> Share, then <b>Add to Home Screen</b>.
+      </div>
+      <button type="button" class="btn subtle" id="btnInstall" hidden>Install Gym Vision</button>
+      <p class="fineprint">Video never leaves your device. <a id="repoLink" href="#" target="_blank" rel="noopener">Open source</a> · <span id="versionTag"></span></p>
+    </footer>
   </main>
 
-  <header class="topbar">
-    <div class="seg" role="tablist" aria-label="Mode">
-      <button type="button" role="tab" data-mode="tracker" aria-selected="true">Tracker</button>
-      <button type="button" role="tab" data-mode="pushup" aria-selected="false">Push-ups</button>
-      <button type="button" role="tab" data-mode="squat" aria-selected="false">Squats</button>
+  <!-- ============ SESSION (camera) ============ -->
+  <section class="session" id="session" hidden>
+    <div class="stage" id="stage">
+      <video id="video" playsinline muted autoplay></video>
+      <canvas id="gl"></canvas>
+      <canvas id="overlay"></canvas>
     </div>
-    <div class="tools">
-      <span class="pill" id="fps" title="Frames analyzed per second">– fps</span>
-      <button type="button" class="icon-btn" id="btnFlip" aria-label="Switch camera" title="Switch camera">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8.5A2.5 2.5 0 0 1 5.5 6H7l1.6-2h6.8L17 6h1.5A2.5 2.5 0 0 1 21 8.5v8a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 16.5z"/><path d="M8.8 12.2a3.3 3.3 0 0 1 5.9-1.7M15.2 13.3a3.3 3.3 0 0 1-5.9 1.7"/><path d="M15 8.4v2.3h-2.3M9 17.1v-2.3h2.3"/></svg>
-      </button>
-      <button type="button" class="icon-btn" id="btnUpload" aria-label="Analyze a video file" title="Analyze a video file">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 9h18M8 4v5M16 4v5"/><path d="M10.5 12.5v4.5l4-2.25z" class="fill"/></svg>
-      </button>
-      <button type="button" class="icon-btn" id="btnSettings" aria-label="Settings" title="Settings">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg>
-      </button>
-    </div>
-  </header>
 
-  <div class="banner" id="banner" data-tone="info" role="status" aria-live="polite" hidden></div>
-
-  <!-- Tracker HUD -->
-  <section class="hud hud-tracker" aria-label="Joint angles">
-    <div class="card angles-card">
-      <div class="card-head">
-        <span class="eyebrow">Joint angles</span>
-        <button type="button" class="chip" id="btnHands" aria-pressed="false" title="Track individual fingers (extra model)">Fingers</button>
+    <header class="session-bar">
+      <button type="button" class="back-btn" id="btnBack" aria-label="Back to home"></button>
+      <div class="session-title">
+        <strong id="sessionTitle">Body Scan</strong>
+        <span id="sessionHint"></span>
       </div>
-      <div class="angles" id="angleGrid">
-        <span></span><span class="h L">Left</span><span class="h R">Right</span>
+      <div class="tools">
+        <span class="pill" id="fps" title="Frames analyzed per second">– fps</span>
+        <button type="button" class="icon-btn" id="btnFlip" aria-label="Switch camera" title="Switch camera"></button>
+        <button type="button" class="icon-btn" id="btnUpload" aria-label="Analyze a video file" title="Analyze a video file"></button>
+        <button type="button" class="icon-btn" data-action="settings" aria-label="Settings" title="Settings"></button>
       </div>
-    </div>
-    <div class="legend card">
-      <span><i class="sw L"></i>Left</span>
-      <span><i class="sw R"></i>Right</span>
-    </div>
-  </section>
+    </header>
 
-  <!-- Exercise HUD (push-ups, squats) -->
-  <section class="hud hud-exercise" aria-label="Exercise stats">
-    <div class="card reps-card">
-      <div class="reps-top">
-        <div>
-          <div class="reps-count" id="repCount">0</div>
-          <div class="eyebrow">reps</div>
+    <div class="banner" id="banner" data-tone="info" role="status" aria-live="polite" hidden></div>
+    <div class="callout" id="callout" hidden>
+      <i id="calloutDot"></i>
+      <div><strong id="calloutName"></strong><span id="calloutDetail"></span></div>
+    </div>
+
+    <!-- Body Scan -->
+    <section class="dock dock-scan" aria-label="Body Scan layers">
+      <div class="card angles-card" id="anglesCard" hidden>
+        <div class="angles" id="angleGrid">
+          <span></span><span class="h L">Left</span><span class="h R">Right</span>
         </div>
-        <button type="button" class="icon-btn small" id="btnReset" aria-label="Reset reps" title="Reset reps">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 12a8.5 8.5 0 1 0 2.8-6.3L3.5 8.2"/><path d="M3.5 3.5v4.7h4.7"/></svg>
-        </button>
       </div>
-      <div class="reps-sub" id="repSub">0 clean · 0 not counted</div>
-      <div class="rep-log" id="repLog" aria-label="Recent reps"></div>
+      <div class="chips" role="group" aria-label="Layers">
+        <button type="button" class="chip" data-layer="skeleton">Skeleton</button>
+        <button type="button" class="chip" data-layer="outline">Outline</button>
+        <button type="button" class="chip" data-layer="parts">Body parts</button>
+        <button type="button" class="chip" data-layer="angles">Angles</button>
+        <button type="button" class="chip" data-layer="fingers">Fingers</button>
+      </div>
+      <p class="dock-hint" id="scanHint">Tap or drag over your body to identify any part.</p>
+    </section>
+
+    <!-- Exercises -->
+    <section class="dock dock-exercise" aria-label="Exercise stats">
+      <div class="card reps-card">
+        <div class="reps-top">
+          <div>
+            <div class="reps-count" id="repCount">0</div>
+            <div class="eyebrow" id="repLabel">reps</div>
+          </div>
+          <button type="button" class="icon-btn small" id="btnReset" aria-label="Reset" title="Reset"></button>
+        </div>
+        <div class="reps-sub" id="repSub"></div>
+        <div class="rep-log" id="repLog" aria-label="Recent reps"></div>
+      </div>
+      <div class="card depth-card">
+        <div class="meter" aria-hidden="true">
+          <div class="meter-fill" id="meterFill"></div>
+          <div class="meter-target"></div>
+        </div>
+        <div class="depth-stats">
+          <div class="depth-val" id="meterVal">–</div>
+          <div class="eyebrow" id="meterLabel">depth</div>
+          <dl class="mini" id="statList"></dl>
+        </div>
+      </div>
+    </section>
+
+    <!-- Measure -->
+    <section class="dock dock-measure" aria-label="Measurement steps">
+      <div class="card measure-card">
+        <div class="measure-head">
+          <span class="eyebrow" id="mStep">Step 1 of 3</span>
+          <button type="button" class="chip" id="btnHistory">History</button>
+        </div>
+        <h3 id="mTitle">Front</h3>
+        <p id="mInstruction"></p>
+        <div class="m-status" id="mStatus" data-tone="info"></div>
+        <div class="m-progress"><div id="mProgress"></div></div>
+        <div class="m-actions">
+          <button type="button" class="btn subtle" id="btnSkip">Skip</button>
+          <button type="button" class="btn primary" id="btnCapture">Capture</button>
+        </div>
+      </div>
+    </section>
+
+    <aside class="guide card" id="guide" hidden>
+      <div class="guide-art" id="guideArt"></div>
+      <ol id="guideSteps"></ol>
+      <button type="button" class="chip" id="btnGuideHide">Got it</button>
+    </aside>
+
+    <div class="filebar" id="fileBar" hidden>
+      <button type="button" class="icon-btn small" id="btnPlay" aria-label="Play"></button>
+      <input type="range" id="seek" min="0" max="1000" value="0" step="1" aria-label="Seek">
+      <span class="time" id="timeVal">0:00</span>
+      <button type="button" class="chip" id="btnSpeed" title="Playback speed">1×</button>
+      <button type="button" class="chip" id="btnBackToCam">Camera</button>
     </div>
 
-    <div class="card depth-card">
-      <div class="meter" aria-hidden="true">
-        <div class="meter-fill" id="depthFill"></div>
-        <div class="meter-target"></div>
+    <div class="session-error" id="sessionError" hidden>
+      <p id="sessionErrorText"></p>
+      <div class="m-actions">
+        <button type="button" class="btn subtle" id="btnErrorHome">Back</button>
+        <button type="button" class="btn primary" id="btnErrorVideo">Analyze a video instead</button>
       </div>
-      <div class="depth-stats">
-        <div class="depth-val" id="depthVal">–</div>
-        <div class="eyebrow">depth</div>
-        <dl class="mini">
-          <dt id="stat1Label">Elbow</dt><dd id="stat1Val">–</dd>
-          <dt id="stat2Label">Body</dt><dd id="stat2Val">–</dd>
-          <dt>Tempo</dt><dd id="tempoVal">–</dd>
-        </dl>
-      </div>
-    </div>
-  </section>
-
-  <!-- Setup guides -->
-  <aside class="guide card" id="guide" hidden>
-    <div class="guide-pushup">
-      <svg class="guide-art" viewBox="0 0 320 120" aria-hidden="true">
-        <path d="M16 104h288" class="floor"/>
-        <path d="M40 76 L200 58 M40 76 L200 102" class="fov"/>
-        <rect x="22" y="66" width="30" height="20" rx="4" class="phone"/>
-        <circle cx="37" cy="76" r="3.5" class="lens"/>
-        <path d="M172 62 L176 84 L178 102" class="body"/>
-        <path d="M172 62 L236 76 L292 92 L300 102" class="body"/>
-        <circle cx="158" cy="56" r="10" class="head"/>
-      </svg>
-      <ol>
-        <li>Put your phone on the floor in <b>landscape</b>, about 2 m away.</li>
-        <li>Set up <b>side-on</b> so your whole body is in frame.</li>
-        <li>Get into a plank. Reps count automatically.</li>
-      </ol>
-    </div>
-    <div class="guide-squat">
-      <svg class="guide-art" viewBox="0 0 320 120" aria-hidden="true">
-        <path d="M16 110h288" class="floor"/>
-        <path d="M42 62 L180 14 M42 62 L180 110" class="fov"/>
-        <rect x="34" y="48" width="16" height="28" rx="3" class="phone"/>
-        <circle cx="42" cy="54" r="2.5" class="lens"/>
-        <path d="M42 76 V110" class="floor"/>
-        <path d="M232 42 L252 72 L214 78 L222 108" class="body"/>
-        <path d="M234 48 L200 56" class="body"/>
-        <circle cx="228" cy="30" r="10" class="head"/>
-      </svg>
-      <ol>
-        <li>Prop your phone up at about <b>hip height</b>, 2–3 m away.</li>
-        <li><b>Side-on</b> checks depth and back angle. <b>Facing</b> the camera checks your knees.</li>
-        <li>Stand tall. Reps count automatically.</li>
-      </ol>
-    </div>
-    <button type="button" class="chip" id="btnGuideHide">Got it</button>
-  </aside>
-
-  <!-- Video file playback -->
-  <div class="filebar" id="fileBar" hidden>
-    <button type="button" class="icon-btn small" id="btnPlay" aria-label="Pause">
-      <svg viewBox="0 0 24 24" aria-hidden="true" class="ico-pause"><path d="M8 5v14M16 5v14"/></svg>
-      <svg viewBox="0 0 24 24" aria-hidden="true" class="ico-play"><path d="M7 5l12 7-12 7z" class="fill"/></svg>
-    </button>
-    <input type="range" id="seek" min="0" max="1000" value="0" step="1" aria-label="Seek">
-    <span class="time" id="timeVal">0:00</span>
-    <button type="button" class="chip" id="btnSpeed" title="Playback speed">1×</button>
-    <button type="button" class="chip" id="btnBackToCam">Camera</button>
-  </div>
-
-  <!-- Start screen -->
-  <section class="start" id="start">
-    <div class="start-inner">
-      <img class="brand-mark" src="icons/icon.svg" alt="" width="84" height="84">
-      <h1>Gym Technique Helper</h1>
-      <p class="tagline">Live body tracking with push-up and squat form feedback. Runs entirely on your device.</p>
-
-      <div class="actions">
-        <button type="button" class="btn primary" id="btnStartCam">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8.5A2.5 2.5 0 0 1 5.5 6H7l1.6-2h6.8L17 6h1.5A2.5 2.5 0 0 1 21 8.5v8a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 16.5z"/><circle cx="12" cy="12.5" r="3.5"/></svg>
-          Start camera
-        </button>
-        <button type="button" class="btn" id="btnStartFile">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 9h18M8 4v5M16 4v5"/><path d="M10.5 12.5v4.5l4-2.25z" class="fill"/></svg>
-          Analyze a video
-        </button>
-      </div>
-
-      <div class="error" id="startError" role="alert" hidden></div>
-
-      <ul class="features">
-        <li><b>Tracker</b> draws your skeleton and shows live elbow, shoulder, hip and knee angles.</li>
-        <li><b>Push-ups</b> counts reps, measures how deep you go and flags sagging or piking hips.</li>
-        <li><b>Squats</b> counts reps, checks you reach parallel and flags forward lean or caving knees.</li>
-        <li><b>Video</b> mode analyzes a clip you recorded, so it also works on a PC with no camera.</li>
-      </ul>
-
-      <div class="install" id="installHint" hidden>
-        <b>Add to Home Screen:</b> tap
-        <svg viewBox="0 0 24 24" aria-label="Share" class="inline-ico"><path d="M12 15V3.5M8 7.5l4-4 4 4"/><path d="M6 10.5H5a1.5 1.5 0 0 0-1.5 1.5v7A1.5 1.5 0 0 0 5 20.5h14a1.5 1.5 0 0 0 1.5-1.5v-7A1.5 1.5 0 0 0 19 10.5h-1"/></svg>
-        Share, then <b>Add to Home Screen</b>.
-      </div>
-      <button type="button" class="btn subtle" id="btnInstall" hidden>Install app</button>
-
-      <p class="fineprint">Video never leaves your device. <a id="repoLink" href="#" target="_blank" rel="noopener">Open source</a> · <span id="versionTag"></span></p>
     </div>
   </section>
 
@@ -190,70 +187,27 @@
     <div class="spinner" aria-hidden="true"></div>
     <p id="loadingText">Loading…</p>
   </div>
-
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
+  <!-- ============ DIALOGS ============ -->
   <dialog class="sheet" id="settings" aria-labelledby="settingsTitle">
     <form method="dialog">
-      <div class="sheet-head">
-        <h2 id="settingsTitle">Settings</h2>
-        <button class="chip" value="close">Done</button>
-      </div>
+      <div class="sheet-head"><h2 id="settingsTitle">Settings</h2><button class="chip" value="close">Done</button></div>
       <div class="sheet-body">
-        <div class="field">
-          <label for="setCamera">Camera</label>
-          <select id="setCamera"></select>
-          <p class="hint">On iPhone, the ultra-wide back camera fits your whole body in frame more easily.</p>
-        </div>
-
+        <h3 class="group-title">Tracking</h3>
         <div class="field">
           <span class="label">Tracking model</span>
-          <div class="choice" id="setModel" role="radiogroup" aria-label="Tracking model">
-            <label><input type="radio" name="model" value="lite"><span>Lite</span></label>
-            <label><input type="radio" name="model" value="full"><span>Full</span></label>
-            <label><input type="radio" name="model" value="heavy"><span>Heavy</span></label>
+          <div class="choice" role="radiogroup" aria-label="Tracking model">
+            <label><input type="radio" name="model" value="lite"><span>Fast</span></label>
+            <label><input type="radio" name="model" value="full"><span>Balanced</span></label>
+            <label><input type="radio" name="model" value="heavy"><span>Accurate</span></label>
           </div>
           <p class="hint" id="modelHint"></p>
         </div>
-
         <div class="field">
-          <label for="setDepth">Push-up depth target <output id="setDepthVal"></output></label>
-          <input type="range" id="setDepth" min="60" max="120" step="5">
-          <p class="hint">Elbow angle you need to reach at the bottom for a rep to count. Lower means deeper.</p>
+          <label for="setFps">Camera frame rate</label>
+          <select id="setFps"><option value="60">60 fps (smoothest)</option><option value="30">30 fps (saves battery)</option></select>
         </div>
-
-        <div class="field">
-          <label for="setSquatDepth">Squat depth target</label>
-          <select id="setSquatDepth">
-            <option value="half">Half squat</option>
-            <option value="parallel">Parallel (hips level with knees)</option>
-            <option value="deep">Below parallel</option>
-          </select>
-        </div>
-
-        <label class="switch"><span>Voice feedback<small>Counts reps and calls out form cues</small></span><input type="checkbox" id="setVoice"></label>
-        <label class="switch"><span>Angle labels on body</span><input type="checkbox" id="setLabels"></label>
-        <label class="switch"><span>Dim video<small>Makes the skeleton easier to see</small></span><input type="checkbox" id="setDim"></label>
-        <label class="switch"><span>Finger tracking<small>Tracker mode only. Loads an extra 7.8 MB model.</small></span><input type="checkbox" id="setHands"></label>
-
-        <div class="field">
-          <label for="setAngle">Angle measurement</label>
-          <select id="setAngle">
-            <option value="auto">Auto (3D in Tracker, 2D for push-ups)</option>
-            <option value="2d">2D (as the camera sees it)</option>
-            <option value="3d">3D (estimated depth)</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label for="setMirror">Mirror view</label>
-          <select id="setMirror">
-            <option value="auto">Auto (mirror front camera)</option>
-            <option value="on">Always</option>
-            <option value="off">Never</option>
-          </select>
-        </div>
-
         <div class="field">
           <label for="setDelegate">Processor</label>
           <select id="setDelegate">
@@ -264,7 +218,110 @@
           <p class="hint" id="engineInfo"></p>
         </div>
 
-        <p class="about">Pose tracking by Google MediaPipe. Video is processed on your device and is never uploaded.<br><a id="repoLink2" href="#" target="_blank" rel="noopener">Source code on GitHub</a> · <span id="versionTag2"></span></p>
+        <h3 class="group-title">Camera & display</h3>
+        <div class="field">
+          <label for="setCamera">Camera</label>
+          <select id="setCamera"></select>
+          <p class="hint">On iPhone, the back ultra-wide camera fits your whole body in frame more easily.</p>
+        </div>
+        <div class="field">
+          <label for="setMirror">Mirror view</label>
+          <select id="setMirror">
+            <option value="auto">Auto (mirror the front camera)</option>
+            <option value="on">Always</option>
+            <option value="off">Never</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="setDim">Video brightness <output id="setDimVal"></output></label>
+          <input type="range" id="setDim" min="0" max="0.8" step="0.05">
+          <p class="hint">Darken the video so the skeleton and outline stand out.</p>
+        </div>
+        <label class="switch"><span>Angle labels on body</span><input type="checkbox" id="setLabels"></label>
+        <label class="switch"><span>Voice feedback<small>Counts reps and calls out form cues</small></span><input type="checkbox" id="setVoice"></label>
+
+        <h3 class="group-title">Exercises</h3>
+        <div class="field">
+          <label for="setDepth">Push-up depth target <output id="setDepthVal"></output></label>
+          <input type="range" id="setDepth" min="60" max="120" step="5">
+          <p class="hint">Elbow angle you need to reach for a rep to count. Lower means deeper.</p>
+        </div>
+        <div class="field">
+          <label for="setSquatDepth">Squat depth target</label>
+          <select id="setSquatDepth">
+            <option value="half">Half squat</option>
+            <option value="parallel">Parallel (hips level with knees)</option>
+            <option value="deep">Below parallel</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="setAngle">Angle measurement</label>
+          <select id="setAngle">
+            <option value="auto">Auto (best for each view)</option>
+            <option value="2d">2D (as the camera sees it)</option>
+            <option value="3d">3D (estimated depth)</option>
+          </select>
+        </div>
+
+        <h3 class="group-title">Measurements</h3>
+        <div class="field">
+          <label for="setHeight">Your height</label>
+          <div class="height-row">
+            <input type="number" id="setHeight" inputmode="decimal" min="100" max="250" step="0.5" placeholder="cm">
+            <select id="setUnits" aria-label="Units"><option value="cm">cm</option><option value="in">inches</option></select>
+          </div>
+          <p class="hint">Used to turn pixels into real sizes. Enter it in the unit you picked.</p>
+        </div>
+
+        <p class="about">Gym Vision runs Google MediaPipe on your device. Video is never uploaded.<br><a id="repoLink2" href="#" target="_blank" rel="noopener">Source code on GitHub</a> · <span id="versionTag2"></span></p>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="sheet" id="analyzeDialog" aria-labelledby="analyzeTitle">
+    <form method="dialog">
+      <div class="sheet-head"><h2 id="analyzeTitle">What’s in the video?</h2><button class="chip" value="close">Cancel</button></div>
+      <div class="sheet-body"><div class="pick-list" id="pickList"></div></div>
+    </form>
+  </dialog>
+
+  <dialog class="sheet" id="heightDialog" aria-labelledby="heightTitle">
+    <form method="dialog" id="heightForm">
+      <div class="sheet-head"><h2 id="heightTitle">Your height</h2></div>
+      <div class="sheet-body">
+        <p class="hint">Measurements are scaled from your height, so enter it as accurately as you can (without shoes).</p>
+        <div class="height-row big" id="heightInputs"></div>
+        <div class="m-actions">
+          <button type="button" class="btn subtle" id="btnHeightCancel">Cancel</button>
+          <button type="submit" class="btn primary" value="ok">Continue</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="sheet wide" id="resultsDialog" aria-labelledby="resultsTitle">
+    <form method="dialog">
+      <div class="sheet-head"><h2 id="resultsTitle">Your measurements</h2><button class="chip" value="close">Close</button></div>
+      <div class="sheet-body">
+        <img class="snapshot" id="resultShot" alt="Captured frame with measurement lines">
+        <table class="results" id="resultTable"></table>
+        <p class="hint">Estimates from your camera — about ±1–3 cm. For tracking growth, measure the same way each time: same distance, lighting and tight or no clothing.</p>
+        <div class="m-actions">
+          <button type="button" class="btn subtle" id="btnRetake">Retake</button>
+          <button type="button" class="btn primary" id="btnSaveResult">Save to history</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="sheet wide" id="historyDialog" aria-labelledby="historyTitle">
+    <form method="dialog">
+      <div class="sheet-head"><h2 id="historyTitle">Measurement history</h2><button class="chip" value="close">Close</button></div>
+      <div class="sheet-body">
+        <div id="historyBody"></div>
+        <div class="m-actions">
+          <button type="button" class="btn subtle" id="btnExport">Export CSV</button>
+        </div>
       </div>
     </form>
   </dialog>

@@ -1,27 +1,38 @@
-const KEY = 'gth.settings.v1';
+const KEY = 'gymvision.settings.v1';
+
+const usesInches = () => {
+  try {
+    return /^en-(US|LR|MM)$/i.test(navigator.language || '');
+  } catch {
+    return false;
+  }
+};
 
 export const DEFAULTS = {
-  mode: 'tracker', // 'tracker' | 'pushup' | 'squat'
-  model: 'full', // 'lite' | 'full' | 'heavy'
+  model: 'lite', // 'lite' | 'full' | 'heavy' — speed vs precision
   delegate: 'auto', // 'auto' | 'GPU' | 'CPU'
+  fps: 60, // requested camera frame rate
   angleSource: 'auto', // 'auto' | '2d' | '3d'
-  depthTarget: 90, // elbow angle (deg) that counts as a full-depth push-up
+  depthTarget: 90, // push-up elbow angle for full depth
   squatDepth: 'parallel', // 'half' | 'parallel' | 'deep'
   voice: true,
-  labels: true, // angle labels drawn on the body
-  dimVideo: false,
-  hands: false, // extra finger tracking (tracker mode)
+  labels: true, // angle labels on the body
+  dim: 0, // 0..0.8 — darkens the video so overlays stand out
   mirror: 'auto', // 'auto' | 'on' | 'off'
-  facingMode: 'user', // used when no specific camera is chosen
+  facingMode: 'user',
   deviceId: '',
+  layers: { skeleton: true, outline: true, parts: false, angles: false, fingers: false },
+  units: usesInches() ? 'in' : 'cm',
+  heightCm: null,
+  guidesSeen: {},
 };
 
 export function loadSettings() {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) || '{}');
-    return { ...DEFAULTS, ...saved };
+    return { ...DEFAULTS, ...saved, layers: { ...DEFAULTS.layers, ...(saved.layers || {}) }, guidesSeen: { ...(saved.guidesSeen || {}) } };
   } catch {
-    return { ...DEFAULTS };
+    return structuredClone(DEFAULTS);
   }
 }
 

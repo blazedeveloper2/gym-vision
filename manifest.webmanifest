@@ -1,8 +1,8 @@
 {
   "id": "./",
-  "name": "Gym Technique Helper",
-  "short_name": "Gym Helper",
-  "description": "Live body tracking and push-up technique feedback that runs entirely on your device.",
+  "name": "Gym Vision",
+  "short_name": "Gym Vision",
+  "description": "AI body camera: live body tracking, body-part identifier, body measurements and exercise form feedback.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
@@ -15,5 +15,11 @@
     { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
     { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
     { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ],
+  "shortcuts": [
+    { "name": "Body Scan", "url": "./?tool=scan", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Measure", "url": "./?tool=measure", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Push-ups", "url": "./?tool=pushup", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Squats", "url": "./?tool=squat", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
   ]
 }

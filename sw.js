@@ -1,9 +1,9 @@
-// Offline support. App files are network-first (updates show up right away,
-// the cache is only a fallback); versioned MediaPipe files and models are
+// Offline support. App files are network-first (updates show up right away;
+// the cache is only a fallback). Versioned MediaPipe files and models are
 // cache-first because their URLs never change.
-const VERSION = '0.1.0';
-const SHELL_CACHE = `gth-shell-${VERSION}`;
-const CDN_CACHE = 'gth-cdn-v1';
+const VERSION = '0.2.0';
+const SHELL_CACHE = `gv-shell-${VERSION}`;
+const CDN_CACHE = 'gv-cdn-v1';
 
 const SHELL = [
   './',
@@ -13,12 +13,32 @@ const SHELL = [
   './js/app.js',
   './js/config.js',
   './js/settings.js',
-  './js/pose.js',
+  './js/engine.js',
+  './js/camera.js',
   './js/geometry.js',
-  './js/draw.js',
   './js/voice.js',
+  './js/render/gl.js',
+  './js/render/overlay.js',
+  './js/body/parts.js',
+  './js/body/measure.js',
+  './js/body/history.js',
+  './js/ui/dom.js',
+  './js/ui/icons.js',
+  './js/ui/home.js',
+  './js/ui/scan.js',
+  './js/ui/exercise.js',
+  './js/ui/measure-ui.js',
+  './js/ui/settings-ui.js',
+  './js/exercises/index.js',
+  './js/exercises/base.js',
   './js/exercises/pushup.js',
   './js/exercises/squat.js',
+  './js/exercises/lunge.js',
+  './js/exercises/curl.js',
+  './js/exercises/press.js',
+  './js/exercises/lateral.js',
+  './js/exercises/jacks.js',
+  './js/exercises/plank.js',
   './icons/icon.svg',
   './icons/icon-192.png',
   './icons/icon-512.png',
@@ -40,7 +60,8 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
       for (const key of await caches.keys()) {
-        if (key.startsWith('gth-shell-') && key !== SHELL_CACHE) await caches.delete(key);
+        const stale = (key.startsWith('gv-shell-') && key !== SHELL_CACHE) || key.startsWith('gth-');
+        if (stale) await caches.delete(key);
       }
       await self.clients.claim();
     })(),

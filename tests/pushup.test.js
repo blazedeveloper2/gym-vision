@@ -49,7 +49,7 @@ test('flags a rep that never locks out at the top', () => {
   const angles = [...hold(TOP, 0.4), ...ramp(TOP, 85, 0.8), ...ramp(85, 135, 0.5), ...ramp(135, 85, 0.5), ...ramp(85, TOP, 0.8)];
   const out = reps(run(an, angles.map((elbow) => pushupPose({ elbow }))));
   assert.equal(an.count, 2);
-  assert.ok(out[0].issues.includes('lockout'));
+  assert.ok(out[0].issues.includes('incomplete'));
   assert.deepEqual(out[1].issues, []);
 });
 

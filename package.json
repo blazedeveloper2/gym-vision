@@ -1,8 +1,8 @@
 {
-  "name": "gym-technique-helper",
-  "version": "0.1.0",
+  "name": "gym-vision",
+  "version": "0.2.0",
   "private": true,
-  "description": "Live body tracking and exercise technique feedback in the browser.",
+  "description": "AI body camera: body tracking, body-part identifier, measurements and exercise form feedback in the browser.",
   "type": "module",
   "license": "MIT",
   "scripts": {

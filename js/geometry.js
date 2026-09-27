@@ -70,6 +70,56 @@ export function angleFn(frame, source) {
   return (a, b, c) => angleAt(toPx(lm[a], w, h), toPx(lm[b], w, h), toPx(lm[c], w, h));
 }
 
+export const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, z: ((a.z || 0) + (b.z || 0)) / 2 });
+export const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+/** Angle (deg) of the line top→bottom away from straight down: 0 = upright, 90 = horizontal. */
+export const leanDeg = (top, bottom) => (Math.atan2(Math.abs(top.x - bottom.x), bottom.y - top.y) * 180) / Math.PI;
+
+/**
+ * Tracks whether the person faces the camera or stands side-on, from how far
+ * apart the shoulders look relative to torso length (with hysteresis).
+ */
+export class FacingTracker {
+  constructor() {
+    this.value = null;
+  }
+  update(frame) {
+    const { lm, w, h } = frame;
+    const ids = [P.leftShoulder, P.rightShoulder, P.leftHip, P.rightHip];
+    if (ids.some((i) => vis(lm[i]) < 0.5)) return (this.value ??= 'side');
+    const ls = toPx(lm[P.leftShoulder], w, h);
+    const rs = toPx(lm[P.rightShoulder], w, h);
+    const torso = dist(mid(ls, rs), mid(toPx(lm[P.leftHip], w, h), toPx(lm[P.rightHip], w, h))) || 1;
+    const ratio = Math.abs(ls.x - rs.x) / torso;
+    if (this.value == null) this.value = ratio > 0.45 ? 'front' : 'side';
+    else if (this.value === 'front' && ratio < 0.38) this.value = 'side';
+    else if (this.value === 'side' && ratio > 0.52) this.value = 'front';
+    return this.value;
+  }
+  reset() {
+    this.value = null;
+  }
+}
+
+/** Picks the body side facing the camera, switching only on a clear difference. */
+export class SidePicker {
+  constructor(margin = 0.4) {
+    this.margin = margin;
+    this.value = null;
+  }
+  update(leftScore, rightScore) {
+    const prev = this.value;
+    if (!prev) this.value = leftScore >= rightScore ? 'left' : 'right';
+    else if (prev === 'left' && rightScore > leftScore + this.margin) this.value = 'right';
+    else if (prev === 'right' && leftScore > rightScore + this.margin) this.value = 'left';
+    return this.value;
+  }
+  reset() {
+    this.value = null;
+  }
+}
+
 /** Exponential moving average for jitter reduction. */
 export class Ema {
   constructor(alpha) {

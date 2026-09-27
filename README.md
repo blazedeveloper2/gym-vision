@@ -1,53 +1,81 @@
-# Gym Technique Helper
+# Gym Vision
 
-A web app that tracks your body through the camera and gives live feedback on exercise technique. It installs to your phone's home screen and runs entirely on your device, so no video is ever uploaded.
+An AI body camera that runs in your browser. It gives live full-body tracking, a body-part identifier, body measurements to track growth, and form feedback for 8 exercises. It installs to your phone's home screen, and all processing happens on your device.
 
-**Live app:** https://blazedeveloper2.github.io/gym-technique-helper/
+**Live app:** https://blazedeveloper2.github.io/gym-vision/
 
-## Features
+## What it does
 
-- **Tracker mode:** draws a full-body skeleton (33 landmarks) over the live camera feed. It shows elbow, shoulder, hip and knee angles for both sides, and can optionally track individual fingers.
-- **Push-up mode:**
-  - counts reps automatically
-  - shows how deep you go (a depth % and the elbow angle)
-  - checks your body line for sagging or piked hips and whether you lock out at the top
-  - records the tempo of each rep
-  - can read out rep counts and form cues
-- **Squat mode:**
-  - counts reps and checks you reach the depth target (half squat, parallel, or below parallel)
-  - side-on, it flags too much forward lean
-  - facing the camera, it flags knees caving in
-- **Video mode:** analyzes a clip you recorded earlier, with slow-motion playback. This also works on a PC with no camera.
-- **Installable (PWA):** add it to your home screen for a full-screen, app-like experience. After the first load it works offline.
+### Body Scan
+- **Skeleton:** 33 tracked points.
+- **Body outline:** a glowing outline of your whole silhouette.
+- **Body parts:** colours each region of your body.
+- **Identifier:** tap or drag over your body to name what's under your finger. There are about 100 detailed names, for example:
+  - eyes, nose, ears, forehead, jaw
+  - front, side and rear delts
+  - left and right pecs, sternum, serratus
+  - upper and lower abs, obliques
+  - traps, lats, rhomboids, lower back, glutes
+  - biceps and triceps; inner and outer quads, hamstrings, adductors
+  - kneecap vs back of the knee, shin, calf heads, Achilles, heel, toes
+  - every finger segment, with Fingers on
+
+  It works out whether you face the camera, face away or stand side-on, so the same spot is named correctly from any angle.
+- **Angles:** live elbow, shoulder, hip and knee angles.
+- **Fingers:** hand tracking with 21 points per hand.
+
+### Measure
+Estimates shoulder width, chest, waist, hips, upper arms (relaxed and flexed), forearms, mid-thighs and calves from your height and your body outline. A guided capture takes the front view, then an optional flex pose and an optional side view. Each result is averaged over about 36 frames and shown with ± uncertainty. Results are saved to a history with trends and CSV export.
+
+### Exercises
+Each exercise counts reps (or times the hold) and gives live form cues:
+
+| Exercise | Checks |
+| --- | --- |
+| Push-ups | depth, hip sag or pike, lockout, tempo |
+| Squats | depth (half, parallel or deep), forward lean, knees caving in |
+| Lunges | front-knee depth, upright torso |
+| Bicep curls | full range, elbow swing, body sway |
+| Shoulder press | lockout, even arms, leaning back |
+| Lateral raises | shoulder height, bent elbows, even arms |
+| Jumping jacks | hands overhead, feet wide |
+| Plank | hold timer, hip sag or pike, form % |
+
+**Video mode** analyzes a clip you recorded, with slow-motion playback, so it also works on a PC with no camera.
 
 ## Using it on iPhone
 
-1. Open the live app link in **Safari**.
-2. Tap **Share** and then **Add to Home Screen**.
-3. Open it from the home screen and tap **Start camera**. Allow camera access.
+1. Open the live link in **Safari**.
+2. Tap **Share**, then **Add to Home Screen**.
+3. Open Gym Vision from the home screen and pick a tool.
 
-Camera setup:
+Each exercise shows its own camera setup. In general:
+- **Push-ups and plank:** phone on the floor, side-on.
+- **Everything else:** phone about 2–3 m away at hip or chest height.
 
-- **Push-ups:** phone in **landscape on the floor about 2 m away**, side-on to you, with your whole body in frame.
-- **Squats:** phone propped up at about **hip height, 2–3 m away**. Film side-on to check depth and back angle, or facing you to check your knees.
+The back ultra-wide camera (in Settings) makes it easier to fit your whole body in frame.
 
-Using the back ultra-wide camera (in Settings) makes it easier to fit everything in.
+## How it's fast
 
-> **What about the iPhone's LiDAR / TrueDepth camera?** Browsers only get normal color video, not the depth sensors. MediaPipe estimates 3D positions from the regular image instead (the *3D* angle option). Using the LiDAR would require a native iOS app with ARKit, which is a possible future step.
+- **Each frame processed once:** `requestVideoFrameCallback` runs the pipeline exactly once per camera frame, at 60 fps where the camera supports it.
+- **Fast model by default:** MediaPipe Pose Lite runs on the GPU and falls back to the CPU if needed.
+- **Shared GPU context:** the WebGL renderer shares its context with MediaPipe, so the segmentation mask never leaves the GPU. Outline and body-part colouring are one fragment-shader pass.
+- **No lag:** the renderer draws the exact frame that was analyzed, so the skeleton doesn't trail behind the video.
+- **Instant start:** the model downloads and warms up while you're on the home screen.
 
 ## How it works
 
-- **Pose tracking:** [MediaPipe Pose Landmarker](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker) runs in the browser using WebAssembly and WebGL. It gives 33 body landmarks per frame, both as image coordinates and as estimated 3D world coordinates.
-- **Joint angles:** each angle is measured at the middle joint of three landmarks (for example shoulder → elbow → wrist). In *2D* mode the angle is measured as the camera sees it. In *3D* mode it uses MediaPipe's estimated depth.
-- **Push-up logic** ([`js/exercises/pushup.js`](js/exercises/pushup.js)):
-  - Depth comes from the elbow angle: around 160° means straight arms and the target (90° by default, adjustable) means full depth.
-  - A rep starts when the elbow bends below 140° and finishes when it straightens above 150°. It only counts if you reached the depth target.
-  - Body line is the shoulder → hip → ankle angle. Whether the hip is below or above the shoulder–ankle line tells a sag from a pike. A fault has to last 0.4 s before it's flagged.
-  - A straightened elbow only finishes a rep if the shoulders have also risen back up. This stops hand-release push-ups (lifting your hands at the bottom) from counting twice.
-- **Squat logic** ([`js/exercises/squat.js`](js/exercises/squat.js)):
-  - Depth compares hip height to knee height, scaled by thigh length measured while you stand, so it works from the side or the front. 100% means hips level with the knees (parallel).
-  - The app detects whether you're side-on or facing the camera by how far apart your shoulders appear.
-  - Side-on, it checks torso lean (flagged beyond 50° from vertical). Facing the camera, it checks knee width against ankle width to spot knees caving in.
+- **Exercise engine** ([`js/exercises/base.js`](js/exercises/base.js)):
+  - Each exercise maps a frame to *progress*: 0 is the start position and 1 is the target, such as push-up depth.
+  - The shared engine turns progress into reps and handles form faults, which must last about 0.35 s before they're flagged.
+  - It flags reps that don't return to the start position.
+  - Push-ups also require your shoulders to rise before a rep ends, so hand-release push-ups don't double count.
+- **Body parts** ([`js/body/parts.js`](js/body/parts.js)):
+  - Regions are capsules built from pose landmarks, assigned per pixel inside the body mask.
+  - Detailed names come from each point's position within its region (along the limb, inner or outer, front or back half), plus which way you face. Face and finger landmarks are used where they're available.
+- **Measurements** ([`js/body/measure.js`](js/body/measure.js)):
+  - Sub-pixel edge detection across the segmentation mask, scaled by your height (head top to soles).
+  - Limb circumference is estimated as π × width. Torso circumference uses an ellipse from the front width and the side depth.
 
 ## Run locally
 
@@ -57,42 +85,41 @@ It's a static site with no build step:
 python -m http.server 8000
 ```
 
-Then open http://localhost:8000. The camera works on `localhost`. Other devices on your network need HTTPS, so use the GitHub Pages link on your phone.
+Then open http://localhost:8000. The camera works on `localhost`. Your phone needs HTTPS, so use the live link there.
 
 ## Tests
-
-The rep counters are tested with generated poses (clean reps, shallow reps, sagging hips, forward lean, caving knees and so on). No camera is needed:
 
 ```bash
 node --test
 ```
 
+There are 55 tests, and none need a camera:
+- every exercise, driven by a small 3D body model filmed from the front, side or back
+- measurements on a synthetic silhouette with known sizes
+- the body-part identifier from every angle
+- regression checks on pose data recorded from real workout videos (see [`tests/fixtures`](tests/fixtures/README.md))
+
 ## Project layout
 
 ```
-index.html              App shell
-css/styles.css          Styles
-js/app.js               Camera/video input, main loop, UI
-js/pose.js              MediaPipe model loading (GPU with CPU fallback)
-js/geometry.js          Landmark indices, angle maths, smoothing
-js/draw.js              Skeleton and label rendering
-js/exercises/pushup.js  Push-up rep counter and form checks
-js/exercises/squat.js   Squat rep counter and form checks
-js/voice.js             Spoken feedback
-sw.js                   Offline cache
-tests/                  Rep counter tests with generated poses
+index.html                 App shell (home, session, dialogs)
+css/styles.css             Styles
+js/app.js                  Views, session lifecycle, per-frame pipeline
+js/engine.js               MediaPipe pose + hand landmarkers
+js/camera.js               Camera / video source and frame loop
+js/render/gl.js            WebGL stage: video, outline, body-part shading
+js/render/overlay.js       2D overlay: skeleton, labels, guides
+js/body/parts.js           Body-part regions and detailed identifier
+js/body/measure.js         Measurements from the segmentation mask
+js/body/history.js         Saved measurement history
+js/exercises/*.js          Exercise engine and the 8 exercises
+js/ui/*.js                 Home, Body Scan, exercise and Measure views, settings
+tests/                     Tests, 3D test body, recorded fixtures
 ```
-
-## Roadmap ideas
-
-- More exercises: lunges, overhead press, pull-ups
-- Rep history and progress over time
-- Elbow flare and head position checks for push-ups; heel lift checks for squats
-- A native iOS version using ARKit and LiDAR body tracking
 
 ## Privacy
 
-All processing happens on your device. The MediaPipe library may send anonymous performance metrics to Google, as described in its [privacy notice](https://www.npmjs.com/package/@mediapipe/tasks-vision). Your camera images are never sent.
+Everything runs on your device, and no camera images are sent anywhere. The MediaPipe library may send anonymous performance metrics to Google, as described in its [privacy notice](https://www.npmjs.com/package/@mediapipe/tasks-vision). Measurements are stored only in your browser.
 
 ## License
 
