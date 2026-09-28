@@ -68,7 +68,7 @@ The back ultra-wide camera (in Settings) makes it easier to fit your whole body 
 - **Shared GPU context:** the WebGL renderer shares its context with MediaPipe, so the segmentation mask never leaves the GPU. Outline and body-part colouring are one fragment-shader pass.
 - **No lag:** the renderer draws the exact frame that was analyzed, so the skeleton doesn't trail behind the video.
 - **Instant start:** the model downloads and warms up while you're on the home screen.
-- **Close-ups:** MediaPipe's pose detector finds people by their face, so it can't find a leg on its own. When no face or shoulder is in view, Body Scan switches to [MoveNet](https://www.tensorflow.org/hub/tutorials/movenet) (TensorFlow.js), which needs no face, plus MediaPipe's selfie segmenter for the outline. MoveNet also tries other rotations when a view looks upside down. On real clips cropped to just the legs, it found the hips, knees and ankles in 70–97% of frames, while MediaPipe found them in 0–25%.
+- **Close-ups:** MediaPipe's pose detector finds people by their face, so it can't find a leg on its own. When no face or shoulder is in view, Body Scan switches to [MoveNet](https://www.tensorflow.org/hub/tutorials/movenet) (TensorFlow.js), which needs no face, plus MediaPipe's selfie segmenter for the outline. MoveNet also tries other rotations when a view looks upside down. Close-up joints are only used when they sit on the body outline and hang together (no parts on an empty bed), and joints, front/back and labels are smoothed and held so they don't flicker. On real clips cropped to just the legs, it found the hips, knees and ankles in 70–97% of frames, while MediaPipe found them in 0–25%.
 
 ## How it works
 
@@ -100,7 +100,7 @@ Then open http://localhost:8000. The camera works on `localhost`. Your phone nee
 node --test
 ```
 
-There are 79 tests, and none need a camera:
+There are 81 tests, and none need a camera:
 - every exercise, driven by a small 3D body model filmed from the front, side or back
 - measurements on a synthetic silhouette with known sizes
 - the body-part identifier from every angle
@@ -114,6 +114,7 @@ css/styles.css             Styles
 js/app.js                  Views, session lifecycle, per-frame pipeline
 js/engine.js               MediaPipe pose + hand landmarkers, selfie segmenter
 js/limbs.js                Close-up joint finder (MoveNet) for leg/arm-only views
+js/tracker.js              Picks MediaPipe or close-up tracking per frame; body checks and smoothing
 models/movenet-lightning/  MoveNet SinglePose Lightning v4 (TF.js, Apache 2.0)
 js/camera.js               Camera / video source and frame loop
 js/render/gl.js            WebGL stage: video, outline, body-part shading

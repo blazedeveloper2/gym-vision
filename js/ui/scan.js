@@ -1,6 +1,7 @@
 import { JOINTS, vis, angleFn, Ema } from '../geometry.js';
-import { computeParts, identify, labelPoint, shortName } from '../body/parts.js';
+import { computeParts, identify, labelPoint, shortName, LabelKeeper } from '../body/parts.js';
 import { COLORS } from '../render/overlay.js';
+import { maskData } from '../tracker.js';
 import { $, setText, banner } from './dom.js';
 
 /**
@@ -17,6 +18,8 @@ export class ScanTool {
     this.partsBuf = null;
     this.parts = null;
     this.tap = null; // {x, y (frame px), down, since, info}
+    this.hold = {}; // facing held between frames
+    this.labels = new LabelKeeper();
     this.noPersonSince = null;
     this.jointEmas = JOINTS.map(() => new Ema(0.45));
     this.cells = [];
@@ -47,6 +50,8 @@ export class ScanTool {
     this.tap = null;
     $('callout').hidden = true;
     this.noPersonSince = null;
+    this.hold = {};
+    this.labels.reset();
   }
 
   exit() {
@@ -144,7 +149,7 @@ export class ScanTool {
     const tap = this.tap;
     if (!tap?.down || !mask) return;
     try {
-      const data = mask.getAsFloat32Array();
+      const { data } = maskData(mask);
       const x = Math.min(mask.width - 1, Math.max(0, Math.floor((tap.x / this.frameW) * mask.width)));
       const y = Math.min(mask.height - 1, Math.max(0, Math.floor((tap.y / this.frameH) * mask.height)));
       tap.inside = data[y * mask.width + x] >= 0.5;
@@ -158,8 +163,12 @@ export class ScanTool {
     const { lm, w, h } = frame;
     this.frameW = w;
     this.frameH = h;
-    const opts = { sex: this.app.settings.sex };
+    const opts = { sex: this.app.settings.sex, hold: this.hold };
     this.parts = lm ? (this.partsBuf = computeParts(lm, w, h, this.layers.fingers ? hands : null, this.partsBuf, opts)) : null;
+    // A different tracker or view (e.g. legs close-up → whole body): start the labels afresh.
+    const view = this.parts ? `${frame.source}|${this.parts.mode}` : this.view;
+    if (view !== this.view) this.labels.reset();
+    this.view = view;
     this.checkInside(mask);
 
     if (this.tap) {
@@ -192,19 +201,21 @@ export class ScanTool {
     if (lm && L.skeleton) overlay.skeleton(lm, { alpha: L.parts ? 0.75 : 1 });
     if (hands && L.fingers) overlay.hands(hands, this.app.handConnections);
 
-    if (lm && L.parts && this.parts) {
-      // Biggest parts first, so they win when labels would overlap.
-      const seenNames = new Set();
-      const tags = [];
-      const size = (p) => p.r * (p.r + Math.hypot(p.a.x - p.b.x, p.a.y - p.b.y));
-      for (const p of [...this.parts.fine].sort((a, b) => size(b) - size(a))) {
-        if (p.kind === 'joint' || seenNames.has(p.name)) continue;
-        const at = labelPoint(p, frame.w, frame.h);
-        if (!at) continue;
-        seenNames.add(p.name);
-        tags.push({ at, text: shortName(p.name), color: p.color });
+    if (L.parts) {
+      // Labels on screen stay put; bigger parts win when labels would overlap.
+      const cands = [];
+      if (lm && this.parts) {
+        const seenNames = new Set();
+        for (const p of this.parts.fine) {
+          if (p.kind === 'joint' || seenNames.has(p.name)) continue;
+          const at = labelPoint(p, frame.w, frame.h);
+          if (!at) continue;
+          seenNames.add(p.name);
+          cands.push({ key: p.name, at, text: shortName(p.name), color: p.color, size: p.r * (p.r + Math.hypot(p.a.x - p.b.x, p.a.y - p.b.y)) });
+        }
       }
-      overlay.tags(tags);
+      const tags = this.labels.update(cands, Math.max(frame.w, frame.h) / 640);
+      this.labels.placed(tags, overlay.tags(tags));
     }
 
     if (L.angles) {

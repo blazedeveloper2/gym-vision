@@ -181,6 +181,31 @@ export function legFrame(lm, w, h) {
   return { u, T, Hc, facing, frontSign };
 }
 
+const HOLD_FRAMES = 6;
+
+/** Keeps the previous facing (and side-on front direction) until a new one has held for a few frames. */
+function holdFacing(o, st) {
+  for (const key of ['facing', 'frontSign']) {
+    const cur = st[key];
+    const next = o[key];
+    if (cur == null || next === cur || (key === 'frontSign' && !next)) {
+      if (next || key === 'facing') st[key] = next || cur;
+      st[key + 'Next'] = null;
+      o[key] = st[key] ?? next;
+      continue;
+    }
+    if (st[key + 'Next'] !== next) {
+      st[key + 'Next'] = next;
+      st[key + 'Count'] = 0;
+    }
+    if (++st[key + 'Count'] >= HOLD_FRAMES) {
+      st[key] = next;
+      st[key + 'Next'] = null;
+    }
+    o[key] = st[key];
+  }
+}
+
 // ------------------------------------------------------------ names
 
 const genitalNames = (sex) =>
@@ -193,7 +218,9 @@ const genitalNames = (sex) =>
 /**
  * Builds the body-part map for one frame.
  * @param hands  HandLandmarker-style result ({landmarks: [...21 points]}) or null
- * @param opts.sex  '' | 'male' | 'female'
+ * @param opts.sex   '' | 'male' | 'female'
+ * @param opts.hold  state kept between frames ({}), so front/back/side only
+ *                   changes after it has held for a few frames (no flicker)
  */
 export function computeParts(lm, w, h, hands = null, out = null, opts = {}) {
   const o = out || {
@@ -209,6 +236,7 @@ export function computeParts(lm, w, h, hands = null, out = null, opts = {}) {
   const seen = (i, k = 0.5) => vis(lm[i]) >= k;
   Object.assign(o, { lm, w, h, px, sex, coarse, fine, hands: [], shapes: [] });
   Object.assign(o, facingOf(lm, w, h));
+  if (opts.hold) holdFacing(o, opts.hold);
   const facing = o.facing;
 
   // ---- torso frame (extrapolated when close up)
@@ -796,3 +824,49 @@ export function labelPoint(p, w, h) {
 
 /** Short on-body label for a detailed part: drop the "Left/Right" (colour + position say it). */
 export const shortName = (name) => name.replace(/^(Left|Right) /, '').replace(/^Back of (left|right) /, 'Back of ').replace(/^Top of (left|right) /, 'Top of ');
+
+/**
+ * Keeps on-body labels steady from frame to frame: a label must exist for a
+ * few frames before it shows, labels already on screen keep their place
+ * ahead of new ones, positions glide instead of jumping, and a label that
+ * drops out for a moment is held briefly instead of blinking.
+ */
+export class LabelKeeper {
+  constructor({ appear = 3, hold = 6, max = 14 } = {}) {
+    Object.assign(this, { appear, hold, max, items: new Map() });
+  }
+
+  reset() {
+    this.items.clear();
+  }
+
+  /** @param cands [{key, at: {x, y}, text, color, size}] → tags to draw, steadiest first. */
+  update(cands, scale = 1) {
+    const now = new Set();
+    for (const c of cands) {
+      now.add(c.key);
+      const it = this.items.get(c.key);
+      if (!it) {
+        this.items.set(c.key, { ...c, age: 1, missing: 0, shown: false });
+        continue;
+      }
+      const jump = Math.hypot(c.at.x - it.at.x, c.at.y - it.at.y);
+      const k = jump > 60 * scale ? 1 : 0.25;
+      Object.assign(it, { text: c.text, color: c.color, size: c.size, age: it.age + 1, missing: 0 });
+      it.at = { x: it.at.x + k * (c.at.x - it.at.x), y: it.at.y + k * (c.at.y - it.at.y) };
+    }
+    for (const [key, it] of this.items) {
+      if (now.has(key)) continue;
+      if (++it.missing > (it.shown ? this.hold : 0)) this.items.delete(key);
+    }
+    const ready = [...this.items.values()].filter((it) => it.shown || it.age >= this.appear);
+    ready.sort((a, b) => (b.shown - a.shown) || b.size - a.size);
+    return ready.slice(0, this.max);
+  }
+
+  /** Tell the keeper which labels were actually drawn (not skipped for overlapping). */
+  placed(tags, drawn) {
+    for (const it of this.items.values()) it.shown = false;
+    drawn.forEach((ok, i) => ok && (tags[i].shown = true));
+  }
+}

@@ -229,7 +229,7 @@ export class GLStage {
 
   /**
    * @param o.video       HTMLVideoElement (the frame just analyzed)
-   * @param o.mask        MPMask or null
+   * @param o.mask        MPMask, a CPU mask {data, width, height}, or null
    * @param o.parts       body-part map from computeParts(), or null
    * @param o.colorParts  colour the parts (otherwise the map is only used for finger outlines)
    */
@@ -264,7 +264,16 @@ export class GLStage {
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, premul);
 
     let maskTex = null;
-    if (mask) {
+    if (mask?.data) {
+      // A mask already on the CPU ({data, width, height}): upload it.
+      this.cpuMaskTex ??= gl.createTexture();
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, this.cpuMaskTex);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, mask.width, mask.height, 0, gl.RED, gl.FLOAT, mask.data);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, flipY);
+      maskTex = this.cpuMaskTex;
+    } else if (mask) {
       try {
         maskTex = mask.getAsWebGLTexture();
       } catch (err) {
@@ -294,7 +303,7 @@ export class GLStage {
     gl.uniform1i(u.u_mask, 1);
     gl.uniform1i(u.u_rows, 2);
     gl.uniform1i(u.u_hasMask, maskTex ? 1 : 0);
-    gl.uniform1i(u.u_maskFlipY, this.maskFlipY ? 1 : 0);
+    gl.uniform1i(u.u_maskFlipY, this.maskFlipY && !mask?.data ? 1 : 0);
     gl.uniform1i(u.u_mirror, mirror ? 1 : 0);
     gl.uniform2f(u.u_size, w, h);
     gl.uniform1f(u.u_px, px);

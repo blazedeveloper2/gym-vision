@@ -380,3 +380,45 @@ test('an upside-down view of the whole body keeps front, back and sides right', 
   const back = rotate180(film(skeleton(), { view: 'back' }).lm);
   assert.equal(computeParts(back, W, H).facing, 'back');
 });
+
+test('close-up checks: no body, off-body joints and duplicate arm/leg joints are dropped', async () => {
+  const { validateCloseUp, LandmarkSmoother } = await import('../js/tracker.js');
+  const blank = () => Array.from({ length: 33 }, () => ({ x: 0.5, y: 0.5, z: 0, visibility: 0 }));
+  // Body mask: a vertical band in the middle of a 100×100 mask.
+  const data = new Float32Array(100 * 100);
+  for (let y = 0; y < 100; y++) for (let x = 40; x < 60; x++) data[y * 100 + x] = 0.95;
+  const mask = { data, width: 100, height: 100 };
+  const lm = blank();
+  Object.assign(lm[P.leftHip], { x: 0.5, y: 0.2, visibility: 0.9 });
+  Object.assign(lm[P.leftKnee], { x: 0.5, y: 0.5, visibility: 0.9 });
+  Object.assign(lm[P.leftAnkle], { x: 0.5, y: 0.8, visibility: 0.9 });
+  Object.assign(lm[P.leftElbow], { x: 0.505, y: 0.5, visibility: 0.6 }); // the knee again, called an elbow
+  Object.assign(lm[P.leftShoulder], { x: 0.9, y: 0.1, visibility: 0.9 }); // off the body
+  const out = validateCloseUp(lm, mask);
+  assert.ok(out[P.leftKnee].visibility >= 0.5);
+  assert.ok(out[P.leftElbow].visibility < 0.5, 'duplicate elbow dropped');
+  assert.ok(out[P.leftShoulder].visibility < 0.5, 'off-body shoulder dropped');
+  assert.equal(validateCloseUp(lm, { data: new Float32Array(100 * 100), width: 100, height: 100 }), null, 'no body, no joints');
+  // A joint must be seen twice to appear and is held through a one-frame miss.
+  const sm = new LandmarkSmoother();
+  assert.ok(sm.next(out, 0)[P.leftKnee].visibility < 0.5);
+  assert.ok(sm.next(out, 33)[P.leftKnee].visibility >= 0.5);
+  const miss = out.map((p) => ({ ...p, visibility: 0 }));
+  assert.ok(sm.next(miss, 66)[P.leftKnee].visibility >= 0.5);
+});
+
+test('labels stay steady: new ones wait, shown ones keep their place', async () => {
+  const { LabelKeeper } = await import('../js/body/parts.js');
+  const k = new LabelKeeper({ appear: 3, hold: 6 });
+  const c = (key, x, size = 1) => ({ key, at: { x, y: 0 }, text: key, color: '#fff', size });
+  assert.equal(k.update([c('A', 0)]).length, 0);
+  k.update([c('A', 0)]);
+  const t = k.update([c('A', 0)]);
+  assert.equal(t.length, 1);
+  k.placed(t, [true]);
+  // A bigger newcomer doesn't jump ahead of a label already on screen.
+  for (let i = 0; i < 3; i++) k.placed(k.update([c('A', 2), c('B', 0, 9)]), [true, false]);
+  assert.equal(k.update([c('A', 2), c('B', 0, 9)])[0].key, 'A');
+  // Briefly missing: still shown.
+  assert.ok(k.update([c('B', 0, 9)]).some((x) => x.key === 'A'));
+});

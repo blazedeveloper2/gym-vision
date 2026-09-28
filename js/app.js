@@ -1,7 +1,7 @@
 import { APP_VERSION, POSE_MODELS, REPO_URL } from './config.js';
 import { loadSettings, saveSettings } from './settings.js';
 import { PoseEngine, HandEngine, BodySegmenter } from './engine.js';
-import { LimbEngine } from './limbs.js';
+import { Tracker } from './tracker.js';
 import { FrameSource, cameraErrorMessage } from './camera.js';
 import { GLStage } from './render/gl.js';
 import { Renderer } from './render/overlay.js';
@@ -14,9 +14,6 @@ import { buildHome, buildPicker } from './ui/home.js';
 import { bindSettings } from './ui/settings-ui.js';
 import { icon } from './ui/icons.js';
 import { $, h, setText, toast, banner, loading } from './ui/dom.js';
-
-/** Is the head or a shoulder clearly in the frame (what the pose model locks on to)? */
-const anchored = (lm) => [0, 7, 8, 11, 12].some((i) => lm[i].visibility >= 0.5 && lm[i].x > 0 && lm[i].x < 1 && lm[i].y > 0 && lm[i].y < 1);
 
 const fmtTime = (sec) => (Number.isFinite(sec) ? `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}` : '0:00');
 
@@ -38,11 +35,7 @@ class App {
     this.engine = new PoseEngine({ canvas: this.stage ? $('gl') : null });
     this.hands = new HandEngine();
     this.handConnections = null;
-    this.limbs = new LimbEngine();
-    this.segmenter = new BodySegmenter({ canvas: this.stage ? $('gl') : null });
-    this.limbsFailed = false;
-    this.poseTrusted = true;
-    this.trustCheckAt = 0;
+    this.tracker = new Tracker({ engine: this.engine, segmenter: new BodySegmenter() });
     this.scan = new ScanTool(this);
     this.measure = new MeasureTool(this);
     this.tool = null;
@@ -278,7 +271,7 @@ class App {
       }
       loading(null);
       if (tool.wantsHands) this.ensureHands();
-      if (tool.wantsLimbs) this.ensureLimbs();
+      if (tool.wantsLimbs) this.tracker.loadCloseUp(this.settings.delegate === 'auto' && this.engine.gpuFailed ? 'CPU' : this.settings.delegate);
       this.source.startLoop(() => this.onFrame());
       if (this.source.kind === 'file') this.playAfterWarmup();
       this.keepAwake();
@@ -357,19 +350,6 @@ class App {
       this.persist();
       this.scan.syncChips();
       toast('Couldn’t load finger tracking. Check your connection.', 4000);
-    }
-  }
-
-  /** Loads the close-up fallback (joints without a face, plus its own outline) in the background. */
-  async ensureLimbs() {
-    if (this.limbsFailed || (this.limbs.ready && (this.segmenter.ready || !this.stage))) return;
-    const delegate = this.settings.delegate === 'auto' && this.engine.gpuFailed ? 'CPU' : this.settings.delegate;
-    try {
-      await Promise.all([this.limbs.load(), this.stage ? this.segmenter.load(delegate) : null]);
-    } catch (err) {
-      // Everything else still works; close-ups just need the face in view.
-      console.warn('close-up tracking unavailable', err);
-      this.limbsFailed = true;
     }
   }
 
@@ -478,63 +458,27 @@ class App {
     const tool = this.tool;
     if (!tool || !this.engine.ready) return;
     try {
-      let pose = null;
-      let shown = false;
-      const ran = this.engine.detect(this.video, (res, ts) => {
+      this.tracker.track(this.video, { closeUp: !!tool.wantsLimbs }, (pose, mask, ts) => {
         this.detections++;
-        const lm = res.landmarks?.[0] || null;
-        pose = { lm, world: res.worldLandmarks?.[0] || null, ts };
-        // No face or shoulders in view: the pose model is guessing (it finds
-        // people by their face), so close-up tracking takes over if it can.
-        if (tool.wantsLimbs && this.limbs.ready && !(lm && anchored(lm) && this.trustPose(lm))) return;
-        this.present(tool, this.makeFrame(pose), res.segmentationMasks?.[0] || null, ts);
-        shown = true;
+        this.present(tool, this.makeFrame({ ...pose, ts }), mask, ts);
       });
-      if (ran && !shown) this.presentCloseUp(tool, pose);
-      else if (shown) this.limbs.reset();
     } catch (err) {
       this.onDetectError(err);
     }
     this.countFps();
   }
 
-  /** Given only a leg, the pose model can invent a whole person; now and then check it against MoveNet. */
-  trustPose(lm) {
-    if (this.detections >= this.trustCheckAt) {
-      this.poseTrusted = this.limbs.agrees(lm, this.video);
-      this.trustCheckAt = this.detections + (this.poseTrusted ? 15 : 5);
-    }
-    return this.poseTrusted;
-  }
-
-  makeFrame({ lm, world, ts }) {
+  makeFrame({ lm, world, source, ts }) {
     const v = this.video;
     return {
       lm,
       world,
+      source,
       w: v.videoWidth,
       h: v.videoHeight,
       // Files use media time so tempo is right at slow-motion speeds.
       t: this.source.kind === 'file' ? v.currentTime * 1000 : ts,
     };
-  }
-
-  /** Close up (no face in view): MoveNet joints and the selfie segmenter's outline. */
-  presentCloseUp(tool, pose) {
-    const v = this.video;
-    let lm = null;
-    try {
-      lm = this.limbs.detect(v);
-    } catch (err) {
-      console.warn('close-up tracking failed', err);
-      this.limbsFailed = true;
-      this.limbs = new LimbEngine();
-    }
-    const frame = this.makeFrame({ ...pose, lm: lm || pose.lm, world: lm ? null : pose.world });
-    if (frame.lm && tool.needsMasks && this.segmenter.ready) {
-      if (this.segmenter.segment(v, this.engine.nextTimestamp(), (mask) => this.present(tool, frame, mask, pose.ts))) return;
-    }
-    this.present(tool, frame, null, pose.ts);
   }
 
   /** Hands, tool update, GL stage and overlay for one analyzed frame. */

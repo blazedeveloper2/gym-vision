@@ -132,12 +132,12 @@ export class PoseEngine {
 
 /**
  * Person segmentation on its own (selfie segmenter), for close-ups where the
- * pose landmarker finds no one and so gives no mask. Like PoseEngine it runs
- * in the GL stage's context, so the GL stage samples its mask directly.
+ * pose landmarker finds no one and so gives no mask. Its mask is read back to
+ * the CPU: the close-up tracker checks joints against it, and the GL stage
+ * uploads it (256×256, cheap).
  */
 export class BodySegmenter {
-  constructor({ canvas = null } = {}) {
-    this.canvas = canvas;
+  constructor() {
     this.task = null;
     this.loading = null;
     this.lastTs = 0;
@@ -158,7 +158,6 @@ export class BodySegmenter {
             runningMode: 'VIDEO',
             outputConfidenceMasks: true,
             outputCategoryMask: false,
-            ...(this.canvas ? { canvas: this.canvas } : {}),
           }),
         delegate,
       );
@@ -167,17 +166,17 @@ export class BodySegmenter {
     return this.loading;
   }
 
-  /** `cb(mask)` runs synchronously while the mask is valid. Returns false if it didn't run. */
-  segment(source, ts, cb) {
-    if (!this.task) return false;
+  /** Person mask for this frame as {data: Float32Array, width, height}, or null. */
+  segmentData(source, ts) {
+    if (!this.task) return null;
     if (ts <= this.lastTs) ts = this.lastTs + 1;
     this.lastTs = ts;
-    let ran = false;
+    let out = null;
     this.task.segmentForVideo(source, ts, (r) => {
-      ran = true;
-      cb(r.confidenceMasks?.[0] || null);
+      const m = r.confidenceMasks?.[0];
+      if (m) out = { data: m.getAsFloat32Array().slice(), width: m.width, height: m.height };
     });
-    return ran;
+    return out;
   }
 
   close() {

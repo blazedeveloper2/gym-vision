@@ -128,7 +128,7 @@ export class Renderer {
     }
   }
 
-  /** Small name tags at frame-pixel points; tags that would overlap are skipped. */
+  /** Small name tags at frame-pixel points; tags that would overlap are skipped. Returns which were drawn. */
   tags(items) {
     const { ctx } = this;
     const u = this.unit;
@@ -136,16 +136,18 @@ export class Renderer {
     ctx.save();
     ctx.font = `700 ${size * u}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
     const placed = [];
-    for (const { at, text, color } of items) {
+    const drawn = items.map(({ at, text, color }) => {
       const p = this.framePt(at);
       const w = ctx.measureText(text).width + 16 * u;
       const h = (size + 11) * u;
       const r = { x: p.x - w / 2, y: p.y - h / 2, w, h };
-      if (placed.some((q) => r.x < q.x + q.w && q.x < r.x + r.w && r.y < q.y + q.h && q.y < r.y + r.h)) continue;
+      if (placed.some((q) => r.x < q.x + q.w && q.x < r.x + r.w && r.y < q.y + q.h && q.y < r.y + r.h)) return false;
       placed.push(r);
       this.label(p.x, p.y, text, color, size);
-    }
+      return true;
+    });
     ctx.restore();
+    return drawn;
   }
 
   /** Tap marker: a pulsing ring at a frame-pixel point; fades out with `age` (ms). */

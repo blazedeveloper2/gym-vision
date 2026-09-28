@@ -58,7 +58,6 @@ export class LimbEngine {
     this.rot = 0;
     this.probe = 0;
     this.frames = 0;
-    this.prev = null;
     this.inferMs = 0;
   }
 
@@ -124,54 +123,38 @@ export class LimbEngine {
       if (r.q > best.q + 0.05) {
         best = r;
         this.rot = alt;
-        this.prev = null;
       }
     }
     this.inferMs += 0.2 * (performance.now() - t0 - this.inferMs);
-    if (best.q < 0.25) {
-      this.prev = null;
-      return null;
-    }
-    return this.smooth(cocoToPose(best.kps));
+    this.lastQ = best.q;
+    if (best.q < 0.25) return null;
+    return cocoToPose(best.kps);
   }
 
   /**
    * Does a MediaPipe pose agree with what MoveNet sees? Given only a leg,
    * MediaPipe sometimes "sees" a whole small person that isn't there; its
-   * joints then land far from MoveNet's. True when there isn't enough to judge.
+   * joints then land far from MoveNet's, and MoveNet sees no head or shoulder
+   * where it claims one.
    */
   agrees(lm, source) {
     if (!this.model) return true;
     const w = source.videoWidth || source.width;
     const h = source.videoHeight || source.height;
     const { kps } = this.run(source, this.rot);
-    const d = [];
-    for (let k = 5; k < 17; k++) {
+    const gap = (k) => {
       const p = lm[COCO_TO_POSE[k]];
-      const [x, y, s] = kps[k];
-      if (p.visibility >= 0.5 && s >= 0.3) d.push(Math.hypot((p.x - x) * w, (p.y - y) * h) / Math.max(w, h));
-    }
+      return Math.hypot((p.x - kps[k][0]) * w, (p.y - kps[k][1]) * h) / Math.max(w, h);
+    };
+    // The head or a shoulder it locked on to must really be there.
+    const anchor = [0, 5, 6].some((k) => lm[COCO_TO_POSE[k]].visibility >= 0.5 && kps[k][2] >= 0.4 && gap(k) < 0.08);
+    if (!anchor) return false;
+    const d = [];
+    for (let k = 5; k < 17; k++) if (lm[COCO_TO_POSE[k]].visibility >= 0.5 && kps[k][2] >= 0.3) d.push(gap(k));
     if (d.length < 3) return true;
-    d.sort((a, b) => a - b);
-    return d[d.length >> 1] < 0.12;
+    d.sort((x, y) => x - y);
+    return d[d.length >> 1] < 0.08;
   }
 
-  /** Light smoothing so joints don't jitter; snaps on big moves. */
-  smooth(lm) {
-    const prev = this.prev;
-    if (prev) {
-      for (let i = 0; i < lm.length; i++) {
-        const p = lm[i], q = prev[i];
-        if (!p.visibility || !q.visibility) continue;
-        const a = Math.hypot(p.x - q.x, p.y - q.y) > 0.03 ? 1 : 0.5;
-        p.x = q.x + a * (p.x - q.x);
-        p.y = q.y + a * (p.y - q.y);
-      }
-    }
-    return (this.prev = lm);
-  }
-
-  reset() {
-    this.prev = null;
-  }
+  reset() {}
 }
