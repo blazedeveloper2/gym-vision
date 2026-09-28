@@ -158,7 +158,7 @@ export function checkPose(step, landmarks, w, h, { lenient = false } = {}) {
   const torso = Math.hypot(S.x - Hc.x, S.y - Hc.y) || 1;
   // Height needs the top of the head and the soles inside the frame.
   const ys = (ids) => ids.filter((i) => vis(landmarks[i]) >= 0.3).map((i) => lm[i].y);
-  const headTop = Math.min(...ys([P.nose, P.leftEar, P.rightEar])) - 0.45 * torso;
+  const headTop = Math.min(...ys([P.nose, P.leftEar, P.rightEar])) - 0.32 * torso; // ears/nose to the crown
   const soles = Math.max(...ys([P.leftAnkle, P.rightAnkle, P.leftHeel, P.rightHeel, P.leftFoot, P.rightFoot])) + 0.04 * torso;
   if (headTop < 2) return ['Step back or tilt the phone — the top of your head is cut off'];
   if (soles > h - 2) return ['Step back or tilt the phone — your feet are cut off'];
