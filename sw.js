@@ -1,7 +1,7 @@
 // Offline support. App files are network-first (updates show up right away;
 // the cache is only a fallback). Versioned MediaPipe files and models are
 // cache-first because their URLs never change.
-const VERSION = '0.2.0';
+const VERSION = '0.3.0';
 const SHELL_CACHE = `gv-shell-${VERSION}`;
 const CDN_CACHE = 'gv-cdn-v1';
 

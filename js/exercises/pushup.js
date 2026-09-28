@@ -27,6 +27,7 @@ export class PushupAnalyzer extends RepCounter {
     pikeTolerance: 22,
     maxIncline: 45, // body steeper than this = not in a push-up position
     riseFraction: 0.6, // shoulders must climb back this share of the way up
+    dropShare: 0.5, // shoulders must come down at least this share of what the target elbow angle implies
     bounce: 0.5,
   };
   static statLabels = ['Elbow', 'Body'];
@@ -40,6 +41,7 @@ export class PushupAnalyzer extends RepCounter {
     notCountedVoice: 'Go lower',
     incomplete: { rep: 'straighten your arms at the top', voice: 'Lock out' },
     faults: {
+      drop: { rep: 'chest didn’t go down', miss: 'Not counted — lower your whole body, not just your elbows', missVoice: 'Chest down' },
       sag: { live: 'Hips sagging — squeeze your glutes and brace', rep: 'hips sagged, keep one straight line', voice: 'Keep your hips up', cue: 'Tighten your core' },
       pike: { live: 'Hips too high — lower them into a straight line', rep: 'hips were too high', voice: 'Lower your hips', cue: 'Hips down' },
     },
@@ -106,6 +108,8 @@ export class PushupAnalyzer extends RepCounter {
       progress: (o.topAngle - elbow) / (o.topAngle - o.depthTarget),
       faults,
       height,
+      shoulderY: sh.y,
+      arm,
       stats: [
         { label: 'Elbow', value: `${e}°` },
         { label: 'Body', value: `${Math.round(bodyAngle)}°`, fault: 'sag|pike' },
@@ -125,11 +129,24 @@ export class PushupAnalyzer extends RepCounter {
   }
 
   repState(m, prev) {
-    return { startHeight: prev ? prev.backM.height : m.height, minHeight: m.height };
+    const start = prev ? prev.backM : m;
+    return { startHeight: start.height, minHeight: m.height, topY: start.shoulderY, lowY: m.shoulderY, arm: m.arm };
   }
 
   trackRep(r, m) {
     r.minHeight = Math.min(r.minHeight, m.height);
+    r.topY = Math.min(r.topY, m.shoulderY);
+    r.lowY = Math.max(r.lowY, m.shoulderY);
+    r.arm = Math.max(r.arm, m.arm);
+  }
+
+  repBlocks(r) {
+    // Bending the elbows alone (shoulders staying up) isn't a push-up. With the
+    // shoulder over the hand, its height is ≈ sin(elbow / 2) arm lengths, so
+    // the target angle says how far the shoulders should travel down.
+    const o = this.opts;
+    const expected = Math.sin((o.topAngle * Math.PI) / 360) - Math.sin((o.depthTarget * Math.PI) / 360);
+    return (r.lowY - r.topY) / r.arm < o.dropShare * expected ? ['drop'] : [];
   }
 
   canFinish(m, r) {

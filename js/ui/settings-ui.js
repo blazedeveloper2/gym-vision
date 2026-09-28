@@ -47,6 +47,7 @@ export function bindSettings(app, hooks) {
   select('setMirror', 'mirror', hooks.mirror);
   select('setSquatDepth', 'squatDepth', hooks.exercise);
   select('setAngle', 'angleSource');
+  select('setSex', 'sex', hooks.profile);
   toggle('setLabels', 'labels');
   toggle('setVoice', 'voice', hooks.voice);
 
@@ -82,7 +83,22 @@ export function bindSettings(app, hooks) {
     height.max = s.units === 'in' ? 100 : 250;
     height.value = s.heightCm ? (s.units === 'in' ? (s.heightCm / 2.54).toFixed(1) : s.heightCm.toFixed(1)) : '';
   };
+  const weight = $('setWeight');
+  const showWeight = () => {
+    const lb = s.units === 'in';
+    $('setWeightUnit').textContent = lb ? 'lb' : 'kg';
+    weight.placeholder = lb ? 'lb' : 'kg';
+    weight.min = lb ? 45 : 20;
+    weight.max = lb ? 660 : 300;
+    weight.value = s.weightKg ? (lb ? s.weightKg / 0.45359237 : s.weightKg).toFixed(1) : '';
+  };
   showHeight();
+  showWeight();
+  weight.addEventListener('change', () => {
+    const v = Number(weight.value);
+    s.weightKg = v > 0 ? (s.units === 'in' ? v * 0.45359237 : v) : null;
+    app.persist();
+  });
   height.addEventListener('change', () => {
     const v = Number(height.value);
     s.heightCm = v > 0 ? (s.units === 'in' ? v * 2.54 : v) : null;
@@ -92,11 +108,14 @@ export function bindSettings(app, hooks) {
     s.units = units.value;
     app.persist();
     showHeight();
+    showWeight();
   });
 
   return {
     refresh() {
       showHeight();
+      showWeight();
+      $('setSex').value = s.sex || '';
       document.querySelectorAll('input[name="model"]').forEach((r) => (r.checked = r.value === s.model));
     },
   };

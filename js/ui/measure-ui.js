@@ -4,13 +4,17 @@ import { COLORS } from '../render/overlay.js';
 import { $, h, setText, banner, toast, fmtLen } from './dom.js';
 
 const ORDER = ['front', 'flex', 'side'];
-const CAPTURE_FRAMES = 36;
-const HOLD_MS = 900; // pose must be right this long before the countdown
-const COUNTDOWN_MS = 3000;
+const CAPTURE_FRAMES = 20; // done after this many good frames...
+const MIN_FRAMES = 8; // ...or this many once MIN_CAPTURE_MS has passed
+const MIN_CAPTURE_MS = 1500;
+const STALL_MS = 5000; // no usable frames this long: explain and start over
+const HOLD_MS = 400; // pose must be right this long before the countdown
+const COUNTDOWN_MS = 2000;
 
 /**
  * Measure: guided captures (front, optional flex and side), each averaged
- * over ~36 frames, then results and a history to track growth.
+ * over up to 20 frames (about 1.5 s), then results and a history to track
+ * growth.
  */
 export class MeasureTool {
   constructor(app) {
@@ -119,7 +123,8 @@ export class MeasureTool {
       this.setStatus('Step into view', 'warn');
       return { outline: true };
     }
-    const problems = checkPose(this.step, lm, w, h);
+    // While capturing, only problems that would spoil the numbers pause it.
+    const problems = checkPose(this.step, lm, w, h, { lenient: this.phase === 'capturing' });
 
     if (this.phase === 'align') {
       if (problems.length) {
@@ -151,6 +156,8 @@ export class MeasureTool {
       if (now - this.countdownStart >= COUNTDOWN_MS) {
         this.phase = 'capturing';
         this.captured = 0;
+        this.captureStart = now;
+        this.lastGood = now;
       }
     }
     if (this.phase === 'capturing' && mask) {
@@ -160,17 +167,30 @@ export class MeasureTool {
       } catch (err) {
         console.error('mask readback failed', err);
       }
+      let why = problems[0] || null;
       if (data && !problems.length) {
         const result = measureFrame(this.step, { data, w: mask.width, h: mask.height }, lm);
         if (this.capture.add(result)) {
           this.captured++;
+          this.lastGood = now;
           this.lastLines = { widths: result.widths, sx: w / mask.width, sy: h / mask.height };
-          if (this.step === 'front' && this.captured === Math.round(CAPTURE_FRAMES / 2)) this.takeSnapshot(frame);
+          if (this.step === 'front' && this.captured === MIN_FRAMES) this.takeSnapshot(frame);
+        } else {
+          why = 'Can’t see your outline from head to feet — try more light or a plainer background';
         }
       }
-      $('mProgress').style.width = `${(this.captured / CAPTURE_FRAMES) * 100}%`;
-      this.setStatus(problems.length ? problems[0] : 'Measuring — hold still', problems.length ? 'warn' : 'good');
-      if (this.captured >= CAPTURE_FRAMES) {
+      const elapsed = now - this.captureStart;
+      const target = elapsed >= MIN_CAPTURE_MS ? MIN_FRAMES : CAPTURE_FRAMES;
+      $('mProgress').style.width = `${Math.min(1, this.captured / target) * 100}%`;
+      this.setStatus(why || 'Measuring — hold still', why ? 'warn' : 'good');
+      if (now - this.lastGood > STALL_MS) {
+        this.phase = 'align';
+        this.okSince = null;
+        this.capture = new StepCapture(this.step, this.app.settings.heightCm);
+        this.setStatus(why || 'Couldn’t measure — step back into position', 'warn');
+        return { outline: true };
+      }
+      if (this.captured >= target) {
         this.captures[this.step] = this.capture;
         this.app.voice.say('Got it');
         this.nextStep();

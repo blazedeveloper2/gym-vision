@@ -23,7 +23,10 @@ export const DEFAULTS = {
   deviceId: '',
   layers: { skeleton: true, outline: true, parts: false, angles: false, fingers: false },
   units: usesInches() ? 'in' : 'cm',
+  // Profile
+  sex: '', // '' (not set) | 'male' | 'female' — picks anatomical names in Body Scan
   heightCm: null,
+  weightKg: null,
   guidesSeen: {},
 };
 

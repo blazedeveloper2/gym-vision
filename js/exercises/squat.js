@@ -11,10 +11,12 @@ const FRONT_NEEDED = [
 ];
 
 // Hip depth: 0 standing, 1 = hips level with the knees (parallel).
+// `knee`: the knee must also bend at least this far (deg), so tilting or
+// shifting the hips can't fake depth.
 export const SQUAT_TARGETS = {
-  half: { value: 0.6, label: 'Half squat' },
-  parallel: { value: 1.0, label: 'Parallel' },
-  deep: { value: 1.15, label: 'Below parallel' },
+  half: { value: 0.6, knee: 145, label: 'Half squat' },
+  parallel: { value: 1.0, knee: 125, label: 'Parallel' },
+  deep: { value: 1.15, knee: 115, label: 'Below parallel' },
 };
 
 /**
@@ -43,13 +45,18 @@ export class SquatAnalyzer extends RepCounter {
     notCountedVoice: 'Go deeper',
     incomplete: { rep: 'stand all the way up between reps', voice: 'Stand tall' },
     faults: {
+      bend: { rep: 'knees barely bent', miss: 'Not counted — bend your knees and sit down into it', missVoice: 'Bend your knees' },
       lean: { live: 'Chest up — you’re leaning too far forward', rep: 'chest dropped forward', voice: 'Chest up', cue: 'Chest up' },
       knees: { live: 'Push your knees out over your toes', rep: 'knees caved in', voice: 'Knees out', cue: 'Knees out' },
     },
   };
 
+  get targetInfo() {
+    return SQUAT_TARGETS[this.opts.depthTarget] || SQUAT_TARGETS.parallel;
+  }
+
   get target() {
-    return (SQUAT_TARGETS[this.opts.depthTarget] || SQUAT_TARGETS.parallel).value;
+    return this.targetInfo.value;
   }
 
   get countAt() {
@@ -106,7 +113,10 @@ export class SquatAnalyzer extends RepCounter {
     else if (this.phase !== 'down' && (knee.y - hip.y) / thigh > 0.85) this.thighRef += 0.1 * (thigh - this.thighRef);
     const depth = this.depthEma.next(1 + (hip.y - knee.y) / this.thighRef);
 
-    const angle = angleFn(frame, source === 'auto' ? (front ? '3d' : '2d') : source);
+    const src = source === 'auto' ? (front ? '3d' : '2d') : source;
+    const angle = angleFn(frame, src);
+    // Facing the camera, the knee angle only means something in 3D.
+    const kneeTrusted = !front || (src === '3d' && !!frame.world);
     const kneeAngle = this.kneeEma.next(
       front
         ? (angle(P.leftHip, P.leftKnee, P.leftAnkle) + angle(P.rightHip, P.rightKnee, P.rightAnkle)) / 2
@@ -156,6 +166,7 @@ export class SquatAnalyzer extends RepCounter {
       progress: depth / this.target,
       faults,
       kneeAngle,
+      kneeTrusted,
       stats: [
         { label: 'Knee', value: `${k}°` },
         front
@@ -167,11 +178,16 @@ export class SquatAnalyzer extends RepCounter {
   }
 
   repState(m) {
-    return { minKnee: m.kneeAngle };
+    return { minKnee: m.kneeAngle, kneeTrusted: m.kneeTrusted };
   }
 
   trackRep(r, m) {
     r.minKnee = Math.min(r.minKnee, m.kneeAngle);
+    r.kneeTrusted &&= m.kneeTrusted;
+  }
+
+  repBlocks(r) {
+    return r.kneeTrusted && r.minKnee > this.targetInfo.knee ? ['bend'] : [];
   }
 
   repDetail(r) {

@@ -76,6 +76,7 @@ class App {
       camera: () => this.source.kind === 'camera' && this.restartCamera(),
       mirror: () => this.applyMirror(),
       exercise: () => this.tool?.applySettings?.(),
+      profile: () => this.scan.resolveTap(),
       voice: (on) => {
         this.voice.enabled = on;
         if (on) this.voice.unlock();
@@ -192,6 +193,7 @@ class App {
       // Automated runs stay silent (no spoken rep counts from a test browser).
       this.voice.enabled = q.get('voice') === '1';
       if (Number(q.get('height')) > 0) this.settings.heightCm = Number(q.get('height'));
+      if (['male', 'female'].includes(q.get('sex'))) this.settings.sex = q.get('sex');
       const at = Number(q.get('at')) || 0;
       if (at > 0) {
         const stop = () => {
@@ -468,7 +470,7 @@ class App {
         let hands = null;
         if (tool.wantsHands && this.hands.task) {
           try {
-            hands = this.hands.detect(v, ts);
+            hands = this.hands.detect(v, ts, frame.lm);
           } catch (err) {
             console.error('hand tracking failed', err);
             this.hands.close();
@@ -489,6 +491,7 @@ class App {
             outline: !!plan.outline,
             fill: !!plan.fill,
             parts: plan.parts || null,
+            colorParts: plan.colorParts ?? true,
             highlight: plan.highlight ?? -1,
             px: this.overlay.unit,
           });

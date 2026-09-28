@@ -10,12 +10,17 @@ const NEEDED = [P.leftHip, P.rightHip, P.leftKnee, P.rightKnee, P.leftAnkle, P.r
 /**
  * Lunges (forward, reverse or walking). Progress follows the more bent knee
  * from standing (~170°) down to about 90°; side-on it also watches torso lean.
+ *
+ * The hips must really come down, too: hip height above the lower foot is
+ * compared with the standing height learned between reps, so lifting a foot
+ * behind you or bending one knee on the spot doesn't count.
  */
 export class LungeAnalyzer extends RepCounter {
   static defaults = {
     standAngle: 170,
     targetAngle: 95,
     maxLean: 30,
+    minDrop: 0.2, // hips must drop this share of their standing height
     minRepMs: 500,
   };
   static statLabels = ['Front knee', 'Lean'];
@@ -29,6 +34,7 @@ export class LungeAnalyzer extends RepCounter {
     notCountedVoice: 'Go lower',
     incomplete: { rep: 'stand all the way up between reps', voice: 'Stand tall' },
     faults: {
+      drop: { rep: 'hips didn’t go down', miss: 'Not counted — step out and lower your hips, don’t just bend a knee', missVoice: 'Hips down' },
       lean: { live: 'Keep your chest up — torso is leaning forward', rep: 'torso leaned forward', voice: 'Chest up', cue: 'Chest up' },
     },
   };
@@ -40,6 +46,7 @@ export class LungeAnalyzer extends RepCounter {
 
   reset() {
     this.facingT = new FacingTracker();
+    this.standHeight = null;
     super.reset();
   }
 
@@ -68,6 +75,14 @@ export class LungeAnalyzer extends RepCounter {
     const lean = this.leanEma.next(leanNow);
     const progress = (o.standAngle - kneeAngle) / (o.standAngle - o.targetAngle);
 
+    // Hip height above the lower foot, relative to standing tall.
+    const floor = Math.max(...[P.leftAnkle, P.rightAnkle, P.leftHeel, P.rightHeel].filter((i) => vis(lm[i]) >= 0.4).map((i) => px(i).y));
+    const hipHeight = floor - hip.y;
+    if (this.phase !== 'down' && Math.min(...knees) > o.standAngle - 15) {
+      this.standHeight = this.standHeight == null ? hipHeight : this.standHeight + 0.2 * (hipHeight - this.standHeight);
+    }
+    const drop = this.standHeight ? 1 - hipHeight / this.standHeight : null;
+
     const faults = [];
     if (!front && progress > 0.4 && lean > o.maxLean) faults.push('lean');
 
@@ -79,6 +94,7 @@ export class LungeAnalyzer extends RepCounter {
       progress,
       faults,
       kneeAngle,
+      drop,
       stats: [
         { label: 'Front knee', value: `${k}°` },
         { label: 'Lean', value: `${Math.round(lean)}°`, fault: 'lean' },
@@ -96,11 +112,16 @@ export class LungeAnalyzer extends RepCounter {
   }
 
   repState(m) {
-    return { minKnee: m.kneeAngle };
+    return { minKnee: m.kneeAngle, maxDrop: m.drop };
   }
 
   trackRep(r, m) {
     r.minKnee = Math.min(r.minKnee, m.kneeAngle);
+    if (m.drop != null) r.maxDrop = Math.max(r.maxDrop ?? -Infinity, m.drop);
+  }
+
+  repBlocks(r) {
+    return r.maxDrop != null && r.maxDrop < this.opts.minDrop ? ['drop'] : [];
   }
 
   repDetail(r) {

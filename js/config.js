@@ -1,6 +1,6 @@
 // Central place for names, versions and remote asset URLs.
 export const APP_NAME = 'Gym Vision';
-export const APP_VERSION = '0.2.0';
+export const APP_VERSION = '0.3.0';
 export const REPO_URL = 'https://github.com/blazedeveloper2/gym-vision';
 
 export const MP_VERSION = '1.0.1';

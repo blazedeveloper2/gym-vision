@@ -14,7 +14,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png">
-  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
   <link rel="stylesheet" href="css/styles.css">
   <link rel="modulepreload" href="js/app.js">
   <script type="module" src="js/app.js"></script>
@@ -25,7 +25,7 @@
   <!-- ============ HOME ============ -->
   <main class="home" id="home">
     <header class="home-head">
-      <img src="icons/icon.svg" alt="" width="44" height="44" class="home-logo">
+      <img src="icons/icon-192.png" alt="" width="44" height="44" class="home-logo">
       <div class="home-title">
         <h1>Gym Vision</h1>
         <p>AI body camera</p>
@@ -194,6 +194,32 @@
     <form method="dialog">
       <div class="sheet-head"><h2 id="settingsTitle">Settings</h2><button class="chip" value="close">Done</button></div>
       <div class="sheet-body">
+        <h3 class="group-title">Your profile</h3>
+        <div class="field">
+          <label for="setSex">Sex</label>
+          <select id="setSex">
+            <option value="">Not set</option>
+            <option value="male">Male</option>
+            <option value="female">Female</option>
+          </select>
+          <p class="hint">Lets Body Scan use the exact anatomical names for your body.</p>
+        </div>
+        <div class="field">
+          <label for="setHeight">Height</label>
+          <div class="height-row">
+            <input type="number" id="setHeight" inputmode="decimal" min="100" max="250" step="0.5" placeholder="cm">
+            <select id="setUnits" aria-label="Units"><option value="cm">cm · kg</option><option value="in">in · lb</option></select>
+          </div>
+          <p class="hint">Turns pixels into real sizes for measurements.</p>
+        </div>
+        <div class="field">
+          <label for="setWeight">Weight</label>
+          <div class="height-row">
+            <input type="number" id="setWeight" inputmode="decimal" min="20" max="300" step="0.1" placeholder="kg">
+            <span class="unit" id="setWeightUnit">kg</span>
+          </div>
+        </div>
+
         <h3 class="group-title">Tracking</h3>
         <div class="field">
           <span class="label">Tracking model</span>
@@ -261,16 +287,6 @@
             <option value="2d">2D (as the camera sees it)</option>
             <option value="3d">3D (estimated depth)</option>
           </select>
-        </div>
-
-        <h3 class="group-title">Measurements</h3>
-        <div class="field">
-          <label for="setHeight">Your height</label>
-          <div class="height-row">
-            <input type="number" id="setHeight" inputmode="decimal" min="100" max="250" step="0.5" placeholder="cm">
-            <select id="setUnits" aria-label="Units"><option value="cm">cm</option><option value="in">inches</option></select>
-          </div>
-          <p class="hint">Used to turn pixels into real sizes. Enter it in the unit you picked.</p>
         </div>
 
         <p class="about">Gym Vision runs Google MediaPipe on your device. Video is never uploaded.<br><a id="repoLink2" href="#" target="_blank" rel="noopener">Source code on GitHub</a> · <span id="versionTag2"></span></p>

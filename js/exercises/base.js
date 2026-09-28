@@ -26,7 +26,8 @@ const TEXT_DEFAULTS = {
   notCounted: 'Not counted — use the full range of motion',
   notCountedVoice: 'Full range',
   incomplete: { rep: 'return all the way to the start', voice: 'All the way back' },
-  // key: { live: banner while it happens, rep: after the rep, voice: with the count, cue: spoken live }
+  // key: { live: banner while it happens, rep: after the rep, voice: with the count, cue: spoken live,
+  //        miss / missVoice: why a rep didn't count, when this issue blocked it }
   faults: {},
 };
 
@@ -116,6 +117,10 @@ export class RepCounter {
     return true;
   }
   repIssues() {
+    return [];
+  }
+  /** Anti-cheat checks: issue keys that stop an otherwise deep-enough rep from counting. */
+  repBlocks() {
     return [];
   }
   repDetail(r) {
@@ -226,10 +231,13 @@ export class RepCounter {
     this.phase = 'up';
     if (tEnd - r.start < this.opts.minRepMs) return;
 
-    const counted = r.max >= this.countAt;
+    const deep = r.max >= this.countAt;
+    const blocks = this.repBlocks(r);
+    const counted = deep && blocks.length === 0;
     const issues = [];
-    if (!counted) issues.push('depth');
-    for (const key of Object.keys(this.text.faults)) if (r.faults.has(key)) issues.push(key);
+    if (!deep) issues.push('depth');
+    for (const key of blocks) issues.push(key);
+    for (const key of Object.keys(this.text.faults)) if (r.faults.has(key) && !issues.includes(key)) issues.push(key);
     for (const key of this.repIssues(r)) if (!issues.includes(key)) issues.push(key);
     if (!fullReturn) issues.push('incomplete');
 
@@ -256,8 +264,16 @@ export class RepCounter {
     return key === 'incomplete' ? this.text.incomplete[field] : this.text.faults[key]?.[field];
   }
 
+  /** The issue that best explains a rep not counting, if it has its own message. */
+  missKey(rep) {
+    return rep.issues.find((k) => this.text.faults[k]?.miss) || null;
+  }
+
   repText(rep) {
-    if (!rep.counted) return [this.text.notCounted, 'bad'];
+    if (!rep.counted) {
+      const key = this.missKey(rep);
+      return [key ? this.text.faults[key].miss : this.text.notCounted, 'bad'];
+    }
     const issue = rep.issues.find((k) => k !== 'depth');
     if (issue) return [`Rep ${rep.n} — ${this.issueText(issue, 'rep')}`, 'warn'];
     return [this.text.good(rep.n), 'good'];
@@ -267,7 +283,10 @@ export class RepCounter {
     if (event.type === 'cue') return this.text.faults[event.key]?.cue || '';
     if (event.type !== 'rep') return '';
     const { rep } = event;
-    if (!rep.counted) return this.text.notCountedVoice;
+    if (!rep.counted) {
+      const key = this.missKey(rep);
+      return (key && this.text.faults[key].missVoice) || this.text.notCountedVoice;
+    }
     const issue = rep.issues.find((k) => k !== 'depth');
     return issue ? `${rep.n}. ${this.issueText(issue, 'voice')}` : String(rep.n);
   }

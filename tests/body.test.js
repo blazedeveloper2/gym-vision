@@ -133,7 +133,8 @@ test('identifies muscles facing the camera, from behind and side-on', () => {
   const S = mid2(front, P.leftShoulder, P.rightShoulder);
   const Hc = mid2(front, P.leftHip, P.rightHip);
   assert.equal(name(fctx, [S[0] + 25, S[1] + (Hc[1] - S[1]) * 0.3]), 'Left pec');
-  assert.equal(name(fctx, [S[0], S[1] + (Hc[1] - S[1]) * 0.6]), 'Upper abs');
+  assert.equal(name(fctx, [S[0], S[1] + (Hc[1] - S[1]) * 0.6]), 'Middle abs');
+  assert.equal(name(fctx, [S[0] + 3, S[1] + (Hc[1] - S[1]) * 0.53]), 'Upper abs');
 
   const back = film(skeleton(), { view: 'back' }).lm;
   const bctx = computeParts(back, W, H);
@@ -172,4 +173,124 @@ test('points off the body are not identified', () => {
   const { lm } = film(skeleton());
   const ctx = computeParts(lm, W, H);
   assert.equal(identify(ctx, 20, 20), null);
+});
+
+// ---------- detailed anatomy
+const torsoPt = (lm, tt, dx = 0) => {
+  const S = mid2(lm, P.leftShoulder, P.rightShoulder);
+  const Hc = mid2(lm, P.leftHip, P.rightHip);
+  return [S[0] + (Hc[0] - S[0]) * tt + dx, S[1] + (Hc[1] - S[1]) * tt];
+};
+
+test('uses sex-specific anatomical names when sex is set', () => {
+  const { lm } = film(skeleton());
+  const male = computeParts(lm, W, H, null, null, { sex: 'male' });
+  const female = computeParts(lm, W, H, null, null, { sex: 'female' });
+  const neutral = computeParts(lm, W, H);
+  const crotch = torsoPt(lm, 1.17);
+  assert.equal(name(male, crotch), 'Penis');
+  assert.equal(name(female, crotch), 'Vulva');
+  assert.equal(name(neutral, crotch), 'Genitals');
+  assert.equal(name(male, torsoPt(lm, 1.26)), 'Scrotum');
+  assert.equal(name(female, torsoPt(lm, 1.04)), 'Mons pubis');
+  // Left breast / pec on the image right.
+  assert.equal(name(female, torsoPt(lm, 0.27, 25)), 'Left breast');
+  assert.equal(name(male, torsoPt(lm, 0.27, 25)), 'Left pec');
+  assert.equal(name(male, torsoPt(lm, -0.27)), 'Adam’s apple');
+  assert.equal(name(female, torsoPt(lm, -0.27)), 'Throat');
+});
+
+test('names back-view anatomy: glutes, lats, spine, anus', () => {
+  const back = film(skeleton(), { view: 'back' }).lm;
+  const ctx = computeParts(back, W, H, null, null, { sex: 'male' });
+  const hipL = at(back, P.leftHip);
+  assert.equal(name(ctx, [hipL[0], hipL[1] + 20]), 'Left glute');
+  assert.equal(name(ctx, torsoPt(back, 0.3)), 'Upper spine');
+  assert.equal(name(ctx, torsoPt(back, 1.21)), 'Anus');
+  assert.match(name(ctx, torsoPt(back, 0.5, 35 * -1)), /lat/); // person's left is image left from behind
+});
+
+test('quads split into their heads from the front', () => {
+  const front = film(skeleton()).lm;
+  const ctx = computeParts(front, W, H);
+  const k = at(front, P.leftKnee);
+  const hip = at(front, P.leftHip);
+  // Just above the knee on the inner side (image left of the left leg) is the VMO.
+  assert.equal(name(ctx, [k[0] - 12, k[1] - 0.2 * (k[1] - hip[1])]), 'Left teardrop (VMO)');
+  assert.equal(name(ctx, [hip[0] + 14, (hip[1] + k[1]) / 2]), 'Left outer quad');
+});
+
+test('every point inside the body gets a name (no unknown gaps)', () => {
+  const { lm } = film(skeleton({ arms: [{ abd: 28 }, { abd: 28 }], legs: [{ abd: 6 }, { abd: 6 }] }));
+  const ctx = computeParts(lm, W, H, null, null, { sex: 'female' });
+  let named = 0;
+  let total = 0;
+  for (let y = 0; y < H; y += 6) {
+    for (let x = 0; x < W; x += 6) {
+      if (!identify(ctx, x, y)) continue; // within reach of a region = on the body
+      total++;
+      if (identify(ctx, x, y, { inside: true })?.name) named++;
+    }
+  }
+  assert.ok(total > 500);
+  assert.equal(named, total);
+  // Inside the outline, even a point outside every capsule is named.
+  assert.ok(identify(ctx, 20, 20, { inside: true })?.name);
+  assert.equal(identify(ctx, 20, 20, { inside: false }), null);
+});
+
+test('close up with the hips out of frame, the upper body still works', () => {
+  const { lm } = film(skeleton(), { offset: [640, 620] }); // hips and legs below the frame
+  for (const i of [P.leftHip, P.rightHip, P.leftKnee, P.rightKnee, P.leftAnkle, P.rightAnkle]) lm[i].visibility = 0.02;
+  const ctx = computeParts(lm, W, H, null, null, { sex: 'male' });
+  assert.equal(ctx.mode, 'upper');
+  assert.equal(ctx.facing, 'front');
+  assert.equal(name(ctx, mid2(lm, P.leftShoulder, P.leftElbow, 0.55)), 'Left biceps');
+  const S = mid2(lm, P.leftShoulder, P.rightShoulder);
+  assert.equal(name(ctx, [S[0] + 25, S[1] + 40]), 'Left pec');
+  assert.equal(name(ctx, at(lm, P.nose)), 'Nose');
+});
+
+test('face only still names the face', () => {
+  const { lm } = film(skeleton(), { offset: [640, 700] });
+  for (let i = 11; i < 33; i++) lm[i].visibility = 0.02;
+  const ctx = computeParts(lm, W, H);
+  assert.equal(ctx.mode, 'head');
+  assert.equal(name(ctx, at(lm, 2)), 'Left eye');
+  assert.equal(name(ctx, at(lm, P.nose)), 'Nose');
+});
+
+test('tracked fingers: each bone, knuckles and palm, with the hand shape for the outline', () => {
+  const { lm } = film(skeleton());
+  const wr = { x: lm[P.leftWrist].x, y: lm[P.leftWrist].y };
+  const hand = Array.from({ length: 21 }, (_, i) => {
+    if (i === 0) return { ...wr, z: 0 };
+    const finger = Math.floor((i - 1) / 4);
+    const joint = (i - 1) % 4;
+    return { x: wr.x + (finger - 2) * 0.008, y: wr.y + 0.02 + joint * 0.012, z: 0 };
+  });
+  const ctx = computeParts(lm, W, H, { landmarks: [hand] });
+  const midOf = (a, b) => [((hand[a].x + hand[b].x) / 2) * W, ((hand[a].y + hand[b].y) / 2) * H];
+  assert.match(identify(ctx, ...midOf(10, 11)).detail, /middle phalanx/);
+  assert.equal(name(ctx, midOf(3, 4)), 'Left thumb');
+  assert.equal(ctx.shapes.length, 1);
+  assert.ok(ctx.shapes[0].end - ctx.shapes[0].start >= 15);
+});
+
+test('arms touching the torso are not counted as chest or waist', () => {
+  const { lm } = film(skeleton({ arms: [{ abd: 7, elbow: 5 }, { abd: 7, elbow: 5 }], legs: [{ abd: 6 }, { abd: 6 }] }));
+  const { mask } = bodyMask(lm);
+  const m = measureFrame('front', mask, lm);
+  // The chest capsule is 104 px wide; with the arms included it would be ~150.
+  assert.ok(m.widths.chest.width < 112, `chest ${m.widths.chest.width.toFixed(1)}`);
+  assert.ok(m.widths.chest.touched, 'flags arms against the body');
+});
+
+test('a cut-off head or feet is caught instead of measured', () => {
+  const low = film(skeleton({ arms: [{ abd: 28 }, { abd: 28 }] }), { offset: [640, 250] }).lm;
+  assert.match(checkPose('front', low, W, H)[0], /head is cut off/);
+  const high = film(skeleton({ arms: [{ abd: 28 }, { abd: 28 }] }), { offset: [640, 470] }).lm;
+  assert.match(checkPose('front', high, W, H)[0], /feet are cut off/);
+  const { mask } = bodyMask(high);
+  assert.equal(measureFrame('front', mask, high).heightPx, null);
 });

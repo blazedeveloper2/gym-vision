@@ -16,6 +16,7 @@ export class CurlAnalyzer extends RepCounter {
     restAngle: 155,
     topAngle: 60,
     maxSwing: 35, // upper arm forward of the torso (deg)
+    maxRaise: 65, // beyond this it's a raise or a flex pose, not a curl
     maxSway: 15, // torso lean change from the start (deg)
   };
   static statLabels = ['Elbow', 'Upper arm'];
@@ -30,6 +31,7 @@ export class CurlAnalyzer extends RepCounter {
     notCountedVoice: 'All the way up',
     incomplete: { rep: 'lower all the way down between reps', voice: 'Full extension' },
     faults: {
+      raise: { rep: 'elbow came up', miss: 'Not counted — keep your elbow down by your side and curl', missVoice: 'Elbows down' },
       swing: { live: 'Keep your elbows pinned to your sides', rep: 'elbow drifted forward', voice: 'Elbows in', cue: 'Elbows in' },
       sway: { live: 'Don’t swing your body — keep your torso still', rep: 'body swung', voice: 'No swinging', cue: 'Stay still' },
     },
@@ -91,6 +93,7 @@ export class CurlAnalyzer extends RepCounter {
       progress,
       faults,
       elbow: active.elbow,
+      swing: active.swing,
       stats: [
         { label: 'Elbow', value: `${e}°` },
         { label: 'Upper arm', value: `${Math.round(active.swing)}°`, fault: 'swing' },
@@ -100,11 +103,16 @@ export class CurlAnalyzer extends RepCounter {
   }
 
   repState(m) {
-    return { minElbow: m.elbow };
+    return { minElbow: m.elbow, maxSwing: m.swing };
   }
 
   trackRep(r, m) {
     r.minElbow = Math.min(r.minElbow, m.elbow);
+    r.maxSwing = Math.max(r.maxSwing, m.swing);
+  }
+
+  repBlocks(r) {
+    return r.maxSwing > this.opts.maxRaise ? ['raise'] : [];
   }
 
   repDetail(r) {

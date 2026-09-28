@@ -130,12 +130,34 @@ export class PoseEngine {
   }
 }
 
-/** Optional hand landmarker (finger tracking), in its own context. */
+const HAND_CROP = 256; // px per hand in the zoomed crop
+const POSE_HANDS = [
+  { key: 'L', wr: 15, el: 13, idx: 19, pk: 17 },
+  { key: 'R', wr: 16, el: 14, idx: 20, pk: 18 },
+];
+const pvis = (p) => (p && p.visibility != null ? p.visibility : 0);
+
+/**
+ * Optional hand landmarker (finger tracking), in its own context.
+ *
+ * Hands 2–3 m away are only a few dozen pixels wide in the full frame, too
+ * small for good finger landmarks. So each hand is zoomed: the pose's wrist,
+ * knuckles and elbow give where the hand is and how big, both hands are cut
+ * out side by side into one 512×256 image, the landmarker runs on that, and
+ * the landmarks are mapped back to the frame. Each result knows which hand
+ * (left/right) it is from the crop it came from.
+ */
 export class HandEngine {
   constructor() {
     this.task = null;
     this.loading = null;
     this.lastTs = 0;
+    this.crops = { L: null, R: null };
+    this.smooth = { L: null, R: null };
+    this.canvas = document.createElement('canvas');
+    this.canvas.width = HAND_CROP * 2;
+    this.canvas.height = HAND_CROP;
+    this.ctx2d = this.canvas.getContext('2d', { willReadFrequently: false });
   }
 
   async load(delegate) {
@@ -148,7 +170,7 @@ export class HandEngine {
             baseOptions: { modelAssetPath: HAND_MODEL_URL, delegate: d },
             runningMode: 'VIDEO',
             numHands: 2,
-            minHandDetectionConfidence: 0.5,
+            minHandDetectionConfidence: 0.4,
             minHandPresenceConfidence: 0.5,
             minTrackingConfidence: 0.5,
           }),
@@ -159,11 +181,97 @@ export class HandEngine {
     return this.loading;
   }
 
-  detect(source, ts) {
+  /** Square crop (frame px) around one hand from pose landmarks, smoothed over frames. */
+  cropFor(h, lm, w, hgt) {
+    const P = (i) => ({ x: lm[i].x * w, y: lm[i].y * hgt });
+    if (pvis(lm[h.wr]) < 0.3) return (this.crops[h.key] = null);
+    const wr = P(h.wr);
+    const el = P(h.el);
+    const knuckles = pvis(lm[h.idx]) >= 0.2 && pvis(lm[h.pk]) >= 0.2 ? { x: (P(h.idx).x + P(h.pk).x) / 2, y: (P(h.idx).y + P(h.pk).y) / 2 } : null;
+    const forearm = Math.hypot(wr.x - el.x, wr.y - el.y);
+    const toK = knuckles ? Math.hypot(knuckles.x - wr.x, knuckles.y - wr.y) : 0;
+    const len = Math.max(2.2 * toK, 0.75 * forearm, 24); // wrist to fingertip
+    const from = knuckles && toK > 2 ? knuckles : el;
+    const dx = knuckles && toK > 2 ? from.x - wr.x : wr.x - el.x;
+    const dy = knuckles && toK > 2 ? from.y - wr.y : wr.y - el.y;
+    const dl = Math.hypot(dx, dy) || 1;
+    const want = { x: wr.x + (dx / dl) * 0.45 * len, y: wr.y + (dy / dl) * 0.45 * len, size: 2.3 * len };
+    const prev = this.crops[h.key];
+    // Smooth, but follow fast moves so the hand never leaves its crop.
+    const k = prev && Math.hypot(want.x - prev.x, want.y - prev.y) < 0.25 * prev.size ? 0.5 : 1;
+    const c = prev ? { x: prev.x + k * (want.x - prev.x), y: prev.y + k * (want.y - prev.y), size: prev.size + 0.5 * (want.size - prev.size) } : want;
+    return (this.crops[h.key] = c);
+  }
+
+  /**
+   * Finger landmarks for this frame, normalized to the full frame like a
+   * regular HandLandmarker result. With pose landmarks the hands are zoomed;
+   * without, the whole frame is used.
+   */
+  detect(source, ts, poseLm = null) {
     if (!this.task) return null;
     if (ts <= this.lastTs) ts = this.lastTs + 1;
     this.lastTs = ts;
-    return this.task.detectForVideo(source, ts);
+    const w = source.videoWidth || source.width;
+    const hgt = source.videoHeight || source.height;
+    const crops = poseLm ? POSE_HANDS.map((h) => this.cropFor(h, poseLm, w, hgt)) : [null, null];
+    if (!crops[0] && !crops[1]) {
+      const res = this.task.detectForVideo(source, ts);
+      return { landmarks: (res.landmarks || []).map((hand) => this.filter(null, hand)) };
+    }
+
+    const ctx = this.ctx2d;
+    const S = HAND_CROP;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, 2 * S, S);
+    crops.forEach((c, k) => {
+      if (c) ctx.drawImage(source, c.x - c.size / 2, c.y - c.size / 2, c.size, c.size, k * S, 0, S, S);
+    });
+    const res = this.task.detectForVideo(this.canvas, ts);
+
+    // Map back to the frame; keep the hand nearest each crop's centre.
+    const best = [null, null];
+    for (const hand of res.landmarks || []) {
+      const cx = hand.reduce((a, p) => a + p.x, 0) / hand.length;
+      const k = cx < 0.5 ? 0 : 1;
+      const c = crops[k];
+      if (!c) continue;
+      const off = Math.abs(cx * 2 - k - 0.5);
+      if (best[k] && best[k].off <= off) continue;
+      const mapped = hand.map((p) => ({
+        x: (c.x - c.size / 2 + (p.x * 2 - k) * c.size) / w,
+        y: (c.y - c.size / 2 + p.y * c.size) / hgt,
+        z: p.z,
+      }));
+      best[k] = { off, mapped };
+    }
+    const out = [];
+    best.forEach((b, k) => {
+      const key = POSE_HANDS[k].key;
+      if (!b) {
+        this.smooth[key] = null;
+        return;
+      }
+      const hand = this.filter(key, b.mapped);
+      hand.side = key;
+      out.push(hand);
+    });
+    return { landmarks: out };
+  }
+
+  /** Light smoothing so fingers don't jitter; snaps on big moves. */
+  filter(key, pts) {
+    if (!key) return pts;
+    const prev = this.smooth[key];
+    if (!prev) return (this.smooth[key] = pts);
+    const out = pts.map((p, i) => {
+      const q = prev[i];
+      const move = Math.hypot(p.x - q.x, p.y - q.y);
+      const a = move > 0.01 ? 1 : 0.55;
+      return { x: q.x + a * (p.x - q.x), y: q.y + a * (p.y - q.y), z: p.z };
+    });
+    this.smooth[key] = out;
+    return out;
   }
 
   async connections() {
@@ -174,5 +282,7 @@ export class HandEngine {
   close() {
     this.task?.close();
     this.task = null;
+    this.crops = { L: null, R: null };
+    this.smooth = { L: null, R: null };
   }
 }

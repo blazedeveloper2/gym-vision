@@ -73,14 +73,19 @@ const unit = (a, b) => {
 };
 const at = (a, b, t) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
 
-/** Widest (or narrowest) cross-section between fractions t0..t1 of a→b. */
+/**
+ * Widest (or narrowest) cross-section between fractions t0..t1 of a→b.
+ * `limitsFn(t, c)` returns [max one way, max the other way], or
+ * {limits, soft} when a side may stop at its limit.
+ */
 function scanAlong(sample, a, b, t0, t1, limitsFn, { mode = 'max', steps = 9, soft } = {}) {
   const dir = unit(a, b);
   let best = null;
   for (let k = 0; k < steps; k++) {
     const t = t0 + ((t1 - t0) * k) / (steps - 1);
     const c = at(a, b, t);
-    const r = crossWidth(sample, c, dir, limitsFn(t, c), soft);
+    const lim = limitsFn(t, c);
+    const r = Array.isArray(lim) ? crossWidth(sample, c, dir, lim, soft) : crossWidth(sample, c, dir, lim.limits, lim.soft);
     if (!r) continue;
     if (!best || (mode === 'max' ? r.width > best.width : r.width < best.width)) best = { ...r, t };
   }
@@ -104,10 +109,26 @@ export const MEASURES = {
   calfR: { name: 'Calf (right)', kind: 'limb' },
 };
 
+/** Distance along the ray c + s·d (s > 0) to the polyline `pts`, or Infinity. */
+function rayHit(c, d, pts) {
+  let best = Infinity;
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const a = pts[i];
+    const ex = pts[i + 1].x - a.x;
+    const ey = pts[i + 1].y - a.y;
+    const den = d.x * ey - d.y * ex;
+    if (Math.abs(den) < 1e-9) continue;
+    const s = ((a.x - c.x) * ey - (a.y - c.y) * ex) / den;
+    const u = ((a.x - c.x) * d.y - (a.y - c.y) * d.x) / den;
+    if (s > 0 && u >= 0 && u <= 1) best = Math.min(best, s);
+  }
+  return best;
+}
+
 export const STEPS = {
   front: {
     title: 'Front',
-    instruction: 'Face the camera, 2–3 m away, with your arms slightly away from your sides and feet hip-width apart.',
+    instruction: 'Face the camera, 2–3 m away. Arms out a little (like an A), feet hip-width apart.',
     needed: [P.nose, P.leftShoulder, P.rightShoulder, P.leftElbow, P.rightElbow, P.leftWrist, P.rightWrist, P.leftHip, P.rightHip, P.leftKnee, P.rightKnee, P.leftAnkle, P.rightAnkle],
   },
   flex: {
@@ -124,28 +145,41 @@ export const STEPS = {
 
 /**
  * Checks that the pose suits a capture step. Returns a list of problems
- * (empty = good to capture).
+ * (empty = good to capture). `lenient` (while capturing) only checks what
+ * would make the numbers wrong, not small posture wobbles.
  */
-export function checkPose(step, landmarks, w, h) {
+export function checkPose(step, landmarks, w, h, { lenient = false } = {}) {
   const problems = [];
-  if (STEPS[step].needed.some((i) => vis(landmarks[i]) < 0.6)) return ['Step back so your whole body, head to feet, is in view'];
+  if (STEPS[step].needed.some((i) => vis(landmarks[i]) < 0.5)) return ['Step back so your whole body, head to feet, is in view'];
   const lm = landmarks.map((p) => ({ x: p.x * w, y: p.y * h })); // pixels, so x and y share a scale
   const ls = lm[P.leftShoulder], rs = lm[P.rightShoulder], lh = lm[P.leftHip], rh = lm[P.rightHip];
   const S = at(ls, rs, 0.5);
   const Hc = at(lh, rh, 0.5);
   const torso = Math.hypot(S.x - Hc.x, S.y - Hc.y) || 1;
+  // Height needs the top of the head and the soles inside the frame.
+  const ys = (ids) => ids.filter((i) => vis(landmarks[i]) >= 0.3).map((i) => lm[i].y);
+  const headTop = Math.min(...ys([P.nose, P.leftEar, P.rightEar])) - 0.45 * torso;
+  const soles = Math.max(...ys([P.leftAnkle, P.rightAnkle, P.leftHeel, P.rightHeel, P.leftFoot, P.rightFoot])) + 0.04 * torso;
+  if (headTop < 2) return ['Step back or tilt the phone — the top of your head is cut off'];
+  if (soles > h - 2) return ['Step back or tilt the phone — your feet are cut off'];
   const spread = Math.abs(ls.x - rs.x) / torso;
   const upright = Math.abs(S.x - Hc.x) / torso < 0.2;
-  if (!upright) problems.push('Stand up straight');
+  if (!upright && !lenient) problems.push('Stand up straight');
   if (step === 'side') {
     if (spread > 0.35) problems.push('Turn so your side faces the camera');
     return problems;
   }
   if (spread < 0.45) problems.push('Face the camera');
+  if (lenient) return problems;
   const le = lm[P.leftElbow], re = lm[P.rightElbow], lw = lm[P.leftWrist], rw = lm[P.rightWrist];
   if (step === 'front') {
-    const gap = Math.min(Math.abs(lw.x - lh.x), Math.abs(rw.x - rh.x)) / torso;
-    if (gap < 0.25) problems.push('Hold your arms a little away from your body');
+    // Each arm (shoulder → wrist) should angle out from the body, like an A.
+    const down = unit(S, Hc);
+    const outAngle = (sh, wr) => {
+      const a = unit(sh, wr);
+      return (Math.acos(Math.max(-1, Math.min(1, a.x * down.x + a.y * down.y))) * 180) / Math.PI;
+    };
+    if (Math.min(outAngle(ls, lw), outAngle(rs, rw)) < 10) problems.push('Hold your arms a little away from your body');
     if (lw.y < ls.y || rw.y < rs.y) problems.push('Lower your arms to your sides');
   } else if (step === 'flex') {
     const elbowsUp = Math.abs(le.y - ls.y) / torso < 0.3 && Math.abs(re.y - rs.y) / torso < 0.3;
@@ -176,19 +210,42 @@ export function measureFrame(step, mask, lm) {
     const d = edgeDistance(sample, a.x, a.y, 0, 1, 0.6 * T);
     if (d != null) bottom = Math.max(bottom ?? -Infinity, a.y + d);
   }
-  const heightPx = up != null && bottom != null ? bottom - (headC.y - up) : null;
+  // An "edge" at the image border means the body is cut off, not measured.
+  const top = up != null ? headC.y - up : null;
+  const cut = (top != null && top < 1.5) || (bottom != null && bottom > h - 1.5);
+  const heightPx = top != null && bottom != null && !cut ? bottom - top : null;
   const widths = {};
   const put = (id, r) => {
     if (r) widths[id] = r;
   };
   const torsoDir = unit(S, Hc);
   const torsoLimit = () => [0.9 * T, 0.9 * T];
+  // Front view: arms close to the sides would otherwise be counted as torso.
+  // Each side's scan stops at the inner edge of the arm it runs into.
+  const arms = [
+    [px(P.leftShoulder), px(P.leftElbow), px(P.leftWrist)],
+    [px(P.rightShoulder), px(P.rightElbow), px(P.rightWrist)],
+  ];
+  const armHalf = 0.09 * T;
+  const torsoArmLimit = (t, c) => {
+    const n = { x: -torsoDir.y, y: torsoDir.x }; // crossWidth's first scan direction
+    const limits = [0.9 * T, 0.9 * T];
+    const soft = [false, false];
+    [n, { x: -n.x, y: -n.y }].forEach((d, i) => {
+      const hit = Math.min(...arms.map((a) => rayHit(c, d, a)));
+      if (hit - armHalf < limits[i]) {
+        limits[i] = Math.max(hit - armHalf, 0.1 * T);
+        soft[i] = true;
+      }
+    });
+    return { limits, soft };
+  };
 
   if (step === 'front') {
-    put('shoulders', crossWidth(sample, S, { x: -torsoDir.y, y: torsoDir.x }.x === 0 ? torsoDir : torsoDir, [1.1 * T, 1.1 * T]));
-    put('chest', scanAlong(sample, S, Hc, 0.26, 0.34, torsoLimit, { steps: 3 }));
-    put('waist', scanAlong(sample, S, Hc, 0.55, 0.85, torsoLimit, { mode: 'min', steps: 7 }));
-    put('hips', scanAlong(sample, S, Hc, 0.95, 1.12, torsoLimit, { steps: 5 }));
+    put('shoulders', crossWidth(sample, S, torsoDir, [1.1 * T, 1.1 * T]));
+    put('chest', scanAlong(sample, S, Hc, 0.26, 0.34, torsoArmLimit, { steps: 3 }));
+    put('waist', scanAlong(sample, S, Hc, 0.55, 0.85, torsoArmLimit, { mode: 'min', steps: 7 }));
+    put('hips', scanAlong(sample, S, Hc, 0.95, 1.12, torsoArmLimit, { steps: 5 }));
     const L = { sh: P.leftShoulder, el: P.leftElbow, wr: P.leftWrist, hip: P.leftHip, kn: P.leftKnee, an: P.leftAnkle };
     const R = { sh: P.rightShoulder, el: P.rightElbow, wr: P.rightWrist, hip: P.rightHip, kn: P.rightKnee, an: P.rightAnkle };
     for (const [k, s, o] of [['L', L, R], ['R', R, L]]) {
@@ -306,7 +363,7 @@ export function combine({ front, flex = null, side = null }) {
       plusMinus = 1.7 * src.spread + (depth ? 1.7 * sd[id].spread : 0.04 * value);
       note = depth ? 'front + side' : 'depth estimated — add a side capture';
     }
-    if ((front?.touched.has(id)) && m.kind === 'limb') note = 'legs touching — stand with feet apart';
+    if (front?.touched.has(id)) note = m.kind === 'limb' ? 'legs touching — stand with feet apart' : 'arms close to your body — hold them out a little more';
     out.push({ id, name: m.name, kind: m.kind, value, plusMinus, note });
   }
   return out;

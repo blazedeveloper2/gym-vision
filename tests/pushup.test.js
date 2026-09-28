@@ -76,3 +76,14 @@ test('ignores a person who is standing, not in a plank', () => {
   const view = an.update({ lm: standing, world: null, w: 1280, h: 720, t: 0 }, '2d');
   assert.equal(view.status, 'setup');
 });
+
+test('bending the elbows without lowering the body is not a push-up', () => {
+  const an = new PushupAnalyzer();
+  // Shoulders stay up; the hands come up toward them instead.
+  const S = { x: 400, y: 300 };
+  const chord = (elbow) => 300 * Math.sin((elbow * Math.PI) / 360);
+  const angles = [...hold(TOP, 0.4), ...ramp(TOP, 80, 0.8), ...ramp(80, TOP, 0.8)];
+  const out = reps(run(an, angles.map((elbow) => pushupPose({ elbow, shoulder: S, wrist: { x: S.x, y: S.y + chord(elbow) } }))));
+  assert.equal(an.count, 0);
+  assert.ok(out[0].issues.includes('drop'));
+});

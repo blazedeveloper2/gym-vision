@@ -2,16 +2,25 @@ import { P, vis, toPx, angleFn, Ema, SidePicker, clamp } from '../geometry.js';
 import { HoldTimer } from './base.js';
 
 const SIDES = {
-  left: { sh: P.leftShoulder, el: P.leftElbow, wr: P.leftWrist, hip: P.leftHip, knee: P.leftKnee, ank: P.leftAnkle },
-  right: { sh: P.rightShoulder, el: P.rightElbow, wr: P.rightWrist, hip: P.rightHip, knee: P.rightKnee, ank: P.rightAnkle },
+  left: { sh: P.leftShoulder, el: P.leftElbow, wr: P.leftWrist, hip: P.leftHip, knee: P.leftKnee, ank: P.leftAnkle, heel: P.leftHeel, toe: P.leftFoot },
+  right: { sh: P.rightShoulder, el: P.rightElbow, wr: P.rightWrist, hip: P.rightHip, knee: P.rightKnee, ank: P.rightAnkle, heel: P.rightHeel, toe: P.rightFoot },
 };
 
 /**
  * Plank hold (forearms or hands), side-on. The timer runs while you're in a
  * supported plank; time with sagging or piked hips doesn't count toward form.
+ *
+ * It pauses when the plank isn't real: hips resting on the floor (measured
+ * above the floor line through the hands/elbows and the feet) or knees down.
  */
 export class PlankAnalyzer extends HoldTimer {
-  static defaults = { sagTolerance: 15, pikeTolerance: 20, maxIncline: 30 };
+  static defaults = {
+    sagTolerance: 15,
+    pikeTolerance: 20,
+    maxIncline: 30,
+    minHipHeight: 0.18, // hips above the floor, in torso lengths (lying down ≈ 0.1–0.15)
+    minKnee: 145, // straighter than this, or you're on your knees
+  };
   static statLabels = ['Body'];
   static meterLabel = 'body line';
   static text = {
@@ -51,6 +60,19 @@ export class PlankAnalyzer extends HoldTimer {
     const torso = Math.hypot(hip.x - sh.x, hip.y - sh.y) || 1;
     if (incline > o.maxIncline || support < 0.25 * torso) {
       return { status: 'setup', message: 'Get into a plank — forearms or hands on the floor' };
+    }
+
+    // Floor line: from the lowest hand/elbow to the lowest point of the foot.
+    const lowest = (ids) => ids.filter((i) => vis(lm[i]) >= 0.4).reduce((b, i) => (!b || px(i).y > b.y ? px(i) : b), null);
+    const hand = lowest([S.el, S.wr]);
+    const toe = lowest([S.ank, S.heel, S.toe]) || ft;
+    if (hand && toe && Math.abs(toe.x - hand.x) > 1) {
+      const floorY = hand.y + ((hip.x - hand.x) * (toe.y - hand.y)) / (toe.x - hand.x);
+      if ((floorY - hip.y) / torso < o.minHipHeight) return { status: 'setup', message: 'Lift your hips off the floor — timer paused' };
+    }
+    if (foot === S.ank && vis(lm[S.knee]) >= 0.4) {
+      const knee = angleFn(frame, '2d')(S.hip, S.knee, S.ank);
+      if (knee < o.minKnee) return { status: 'setup', message: 'Knees off the floor, legs straight — timer paused' };
     }
 
     const bodyAngle = this.bodyEma.next(angleFn(frame, source === 'auto' ? '2d' : source)(S.sh, S.hip, foot));
