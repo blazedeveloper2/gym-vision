@@ -294,3 +294,89 @@ test('a cut-off head or feet is caught instead of measured', () => {
   const { mask } = bodyMask(high);
   assert.equal(measureFrame('front', mask, high).heightPx, null);
 });
+
+// ---------- close up on the legs (no shoulders or face in view)
+const legsOnly = (offsetY, hidden = []) => {
+  const { lm } = film(skeleton(), { offset: [640, offsetY] });
+  for (let i = 0; i < 23; i++) lm[i].visibility = 0.02;
+  for (const i of hidden) lm[i].visibility = 0.02;
+  return lm;
+};
+const rotate180 = (lm) => lm.map((p) => ({ ...p, x: 1 - p.x, y: 1 - p.y }));
+
+test('legs close up: thighs, knees and shins are named without a torso', () => {
+  const lm = legsOnly(40);
+  const ctx = computeParts(lm, W, H);
+  assert.equal(ctx.mode, 'legs');
+  assert.equal(ctx.facing, 'front');
+  assert.equal(name(ctx, mid2(lm, P.leftHip, P.leftKnee, 0.45)), 'Left quads');
+  assert.equal(name(ctx, mid2(lm, P.rightHip, P.rightKnee, 0.45)), 'Right quads');
+  assert.equal(name(ctx, at(lm, P.leftKnee)), 'Left kneecap');
+  assert.equal(name(ctx, mid2(lm, P.leftKnee, P.leftAnkle, 0.4)), 'Left shin');
+  // No torso parts float above the hips.
+  assert.ok(!ctx.fine.some((p) => /abs|pec|chest|neck/i.test(p.name)));
+});
+
+test('legs close up from behind names hamstrings and calves', () => {
+  const { lm } = film(skeleton(), { view: 'back', offset: [640, 40] });
+  for (let i = 0; i < 23; i++) lm[i].visibility = 0.02;
+  const ctx = computeParts(lm, W, H);
+  assert.equal(ctx.facing, 'back');
+  assert.match(name(ctx, mid2(lm, P.leftHip, P.leftKnee, 0.6)), /hamstring/);
+  assert.match(name(ctx, mid2(lm, P.leftKnee, P.leftAnkle, 0.3)), /calf/);
+});
+
+test('looking down at your own legs (upside-down view) still names them right', () => {
+  const lm = rotate180(legsOnly(40));
+  const ctx = computeParts(lm, W, H);
+  assert.equal(ctx.mode, 'legs');
+  assert.equal(ctx.facing, 'front');
+  assert.equal(name(ctx, mid2(lm, P.leftHip, P.leftKnee, 0.45)), 'Left quads');
+  assert.equal(name(ctx, at(lm, P.rightKnee)), 'Right kneecap');
+  assert.equal(name(ctx, mid2(lm, P.rightKnee, P.rightAnkle, 0.4)), 'Right shin');
+});
+
+test('hips out of frame: the visible part of the thigh is still the thigh', () => {
+  const lm = legsOnly(-60, [P.leftHip, P.rightHip]);
+  const ctx = computeParts(lm, W, H);
+  assert.equal(ctx.mode, 'legs');
+  const p = mid2(lm, P.leftHip, P.leftKnee, 0.75);
+  assert.ok(p[1] > 0);
+  assert.match(name(ctx, p), /Left (quads|outer quad|teardrop)/);
+  assert.equal(name(ctx, mid2(lm, P.leftKnee, P.leftAnkle, 0.4)), 'Left shin');
+});
+
+test('ankles out of frame: the visible shin is not called the thigh', () => {
+  const lm = legsOnly(520, [P.leftAnkle, P.rightAnkle, P.leftHeel, P.rightHeel, P.leftFoot, P.rightFoot]);
+  const ctx = computeParts(lm, W, H);
+  const p = mid2(lm, P.leftKnee, P.leftAnkle, 0.3);
+  assert.ok(p[1] < H);
+  assert.match(name(ctx, p), /Left (shin|peroneals|inner calf)/);
+});
+
+test('close-up joints: rotated detections map back and keypoints become pose landmarks', async () => {
+  const { unrotate, cocoToPose } = await import('../js/limbs.js');
+  // A point near the top-left, found in each rotated image, maps back to the same spot.
+  const p = [0.2, 0.1];
+  const rotated = { 0: p, 180: [0.8, 0.9], 90: [0.9, 0.2], 270: [0.1, 0.8] };
+  for (const [rot, q] of Object.entries(rotated)) {
+    const [x, y] = unrotate(q[0], q[1], Number(rot));
+    assert.ok(Math.abs(x - p[0]) < 1e-9 && Math.abs(y - p[1]) < 1e-9, `rotation ${rot}: ${x}, ${y}`);
+  }
+  const kps = Array.from({ length: 17 }, (_, k) => [k / 20, 0.5, k === 13 ? 0.6 : 0.05]);
+  const lm = cocoToPose(kps);
+  assert.equal(lm.length, 33);
+  assert.equal(lm[P.leftKnee].x, 13 / 20); // COCO 13 = left knee
+  assert.equal(lm[P.leftKnee].visibility, 1);
+  assert.equal(lm[P.leftHeel].visibility, 0);
+  assert.ok(lm[P.nose].visibility < 0.35);
+});
+
+test('an upside-down view of the whole body keeps front, back and sides right', () => {
+  const front = rotate180(film(skeleton()).lm);
+  const fctx = computeParts(front, W, H);
+  assert.equal(fctx.facing, 'front');
+  assert.equal(name(fctx, mid2(front, P.leftHip, P.leftKnee, 0.45)), 'Left quads');
+  const back = rotate180(film(skeleton(), { view: 'back' }).lm);
+  assert.equal(computeParts(back, W, H).facing, 'back');
+});

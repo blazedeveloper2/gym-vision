@@ -21,7 +21,7 @@ An AI body camera that runs in your browser. It gives live full-body tracking, a
   - hands (with Fingers on): every finger bone, knuckles, palm or back of the hand, thumb pad
   - joints: shoulders, elbows, wrists, hips, knees and ankles
 
-  Which parts show depends on whether you face the camera, face away or stand side-on. With your sex set in Settings, the chest, throat and genital area use sex-specific anatomical names. It keeps working close up: with your hips or legs out of frame, or even with only your face in view.
+  Which parts show depends on whether you face the camera, face away or stand side-on. With your sex set in Settings, the chest, throat and genital area use sex-specific anatomical names. It keeps working close up: with your hips or legs out of frame, with only your face in view, or with the back camera pointed at just a leg or an arm. It works even when you look down at your own legs and they appear upside down.
 - **Identifier:** tap or drag over your body to name what's under your finger. It uses the same map as the colouring, so the name always matches the colour. Every point inside your outline has a name.
 - **Angles:** live elbow, shoulder, hip and knee angles.
 - **Fingers:** hand tracking with 21 points per hand. Each hand is zoomed in on before tracking, so fingers stay accurate from across the room, and the body outline traces your actual fingers.
@@ -68,6 +68,7 @@ The back ultra-wide camera (in Settings) makes it easier to fit your whole body 
 - **Shared GPU context:** the WebGL renderer shares its context with MediaPipe, so the segmentation mask never leaves the GPU. Outline and body-part colouring are one fragment-shader pass.
 - **No lag:** the renderer draws the exact frame that was analyzed, so the skeleton doesn't trail behind the video.
 - **Instant start:** the model downloads and warms up while you're on the home screen.
+- **Close-ups:** MediaPipe's pose detector finds people by their face, so it can't find a leg on its own. When no face or shoulder is in view, Body Scan switches to [MoveNet](https://www.tensorflow.org/hub/tutorials/movenet) (TensorFlow.js), which needs no face, plus MediaPipe's selfie segmenter for the outline. MoveNet also tries other rotations when a view looks upside down. On real clips cropped to just the legs, it found the hips, knees and ankles in 70–97% of frames, while MediaPipe found them in 0–25%.
 
 ## How it works
 
@@ -99,7 +100,7 @@ Then open http://localhost:8000. The camera works on `localhost`. Your phone nee
 node --test
 ```
 
-There are 55 tests, and none need a camera:
+There are 79 tests, and none need a camera:
 - every exercise, driven by a small 3D body model filmed from the front, side or back
 - measurements on a synthetic silhouette with known sizes
 - the body-part identifier from every angle
@@ -111,7 +112,9 @@ There are 55 tests, and none need a camera:
 index.html                 App shell (home, session, dialogs)
 css/styles.css             Styles
 js/app.js                  Views, session lifecycle, per-frame pipeline
-js/engine.js               MediaPipe pose + hand landmarkers
+js/engine.js               MediaPipe pose + hand landmarkers, selfie segmenter
+js/limbs.js                Close-up joint finder (MoveNet) for leg/arm-only views
+models/movenet-lightning/  MoveNet SinglePose Lightning v4 (TF.js, Apache 2.0)
 js/camera.js               Camera / video source and frame loop
 js/render/gl.js            WebGL stage: video, outline, body-part shading
 js/render/overlay.js       2D overlay: skeleton, labels, guides
@@ -129,4 +132,4 @@ Everything runs on your device, and no camera images are sent anywhere. The Medi
 
 ## License
 
-[MIT](LICENSE). Pose tracking uses [MediaPipe](https://github.com/google-ai-edge/mediapipe) (Apache 2.0).
+[MIT](LICENSE). Pose tracking uses [MediaPipe](https://github.com/google-ai-edge/mediapipe) (Apache 2.0). Close-up tracking uses [MoveNet](https://www.kaggle.com/models/google/movenet) and [TensorFlow.js](https://github.com/tensorflow/tfjs) (both Apache 2.0).

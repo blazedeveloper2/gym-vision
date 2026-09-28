@@ -90,16 +90,21 @@ function capsuleSd(c, x, y) {
  */
 export function facingOf(lm, w, h) {
   const ls = lm[P.leftShoulder], rs = lm[P.rightShoulder], lh = lm[P.leftHip], rh = lm[P.rightHip];
+  const shouldersSeen = vis(ls) >= 0.5 && vis(rs) >= 0.5;
+  const torsoSeen = shouldersSeen && vis(lh) >= 0.5 && vis(rh) >= 0.5;
+  // "Across" the body (image right for someone upright), so upside-down and
+  // sideways views are judged the same as upright ones.
+  const across = torsoSeen ? perp(unit(V((ls.x + rs.x) * w, (ls.y + rs.y) * h), V((lh.x + rh.x) * w, (lh.y + rh.y) * h))) : V(1, 0);
+  const acrossOf = (p, q) => (p.x - q.x) * w * across.x + (p.y - q.y) * h * across.y;
   let frontSign = 0;
   const earMid = vis(lm[P.leftEar]) > vis(lm[P.rightEar]) ? lm[P.leftEar] : lm[P.rightEar];
-  if (vis(lm[P.nose]) > 0.3 && vis(earMid) > 0.3) frontSign = Math.sign(lm[P.nose].x - earMid.x) || 1;
-  const shouldersSeen = vis(ls) >= 0.5 && vis(rs) >= 0.5;
-  if (shouldersSeen && vis(lh) >= 0.5 && vis(rh) >= 0.5) {
+  if (vis(lm[P.nose]) > 0.3 && vis(earMid) > 0.3) frontSign = Math.sign(acrossOf(lm[P.nose], earMid)) || 1;
+  if (torsoSeen) {
     const torso = Math.hypot(((ls.x + rs.x) - (lh.x + rh.x)) * w / 2, ((ls.y + rs.y) - (lh.y + rh.y)) * h / 2) || 1;
-    const spread = Math.abs(ls.x - rs.x) * w / torso;
-    if (spread < 0.4) return { facing: 'side', frontSign };
+    const spread = acrossOf(ls, rs) / torso;
+    if (Math.abs(spread) < 0.4) return { facing: 'side', frontSign };
     // Facing the camera, the person's left shoulder appears on the image right.
-    return { facing: ls.x > rs.x ? 'front' : 'back', frontSign };
+    return { facing: spread > 0 ? 'front' : 'back', frontSign };
   }
   // Close up: judge from the face.
   const face = vis(lm[P.nose]) >= 0.5 && vis(lm[2]) >= 0.5 && vis(lm[5]) >= 0.5;
@@ -108,7 +113,72 @@ export function facingOf(lm, w, h) {
     return { facing: 'front', frontSign };
   }
   if (shouldersSeen) return { facing: vis(lm[P.nose]) < 0.3 ? 'back' : ls.x > rs.x ? 'front' : 'back', frontSign };
+  const legs = vis(ls) < 0.5 && vis(rs) < 0.5 ? legFrame(lm, w, h) : null;
+  if (legs) return { facing: legs.facing, frontSign: legs.frontSign || frontSign };
   return { facing: 'side', frontSign };
+}
+
+/**
+ * Body frame from the legs alone (close up on the legs, no shoulders or face
+ * in view). Works at any camera angle — even looking down at your own legs —
+ * because it uses the legs' own down direction rather than the image's.
+ * @returns {{u, T, Hc, facing, frontSign}} or null
+ */
+export function legFrame(lm, w, h) {
+  const px = (i) => V(lm[i].x * w, lm[i].y * h);
+  const ok = (i) => vis(lm[i]) >= 0.5;
+  // Down the body: hip → knee, else knee → ankle, averaged over both legs.
+  let dx = 0, dy = 0, T = 0;
+  for (const s of SIDES) {
+    const seg = ok(s.hip) && ok(s.kn) ? [s.hip, s.kn, 1.18] : ok(s.kn) && ok(s.an) ? [s.kn, s.an, 1.17] : null;
+    if (!seg) continue;
+    const a = px(seg[0]), b = px(seg[1]);
+    const len = dist(a, b);
+    if (len < 4) continue;
+    dx += (b.x - a.x) / len;
+    dy += (b.y - a.y) / len;
+    T = Math.max(T, seg[2] * len); // thigh ≈ shin ≈ 0.85 of the torso
+  }
+  const dl = Math.hypot(dx, dy);
+  if (!(T > 10) || dl < 0.3) return null;
+  const u = V(dx / dl, dy / dl);
+  const v = perp(u);
+
+  // Front or back: facing the camera, the person's left leg is on the image
+  // right of "down"; side-on the legs overlap (or the far one is hidden).
+  let facing = 'side';
+  const pair = [[P.leftHip, P.rightHip], [P.leftKnee, P.rightKnee], [P.leftAnkle, P.rightAnkle]].find(([l, r]) => ok(l) && ok(r));
+  if (pair) {
+    const lat = (px(pair[0]).x - px(pair[1]).x) * v.x + (px(pair[0]).y - px(pair[1]).y) * v.y;
+    facing = Math.abs(lat) < 0.12 * T ? 'side' : lat > 0 ? 'front' : 'back';
+  }
+
+  // Side-on, which way is the front: the toes, else the way the knee bends.
+  let frontSign = 0;
+  for (const s of SIDES) {
+    if (frontSign) break;
+    if (vis(lm[s.heel]) >= 0.5 && vis(lm[s.toe]) >= 0.5) {
+      const d = (px(s.toe).x - px(s.heel).x) * v.x + (px(s.toe).y - px(s.heel).y) * v.y;
+      if (Math.abs(d) > 0.03 * T) frontSign = Math.sign(d);
+    } else if (ok(s.hip) && ok(s.kn) && ok(s.an)) {
+      const k = px(s.kn), line = lerp2(px(s.hip), px(s.an), 0.5);
+      const bend = (k.x - line.x) * v.x + (k.y - line.y) * v.y;
+      if (Math.abs(bend) > 0.05 * T) frontSign = Math.sign(bend);
+    }
+  }
+
+  // Middle of the hips (extrapolated up the thighs if they're out of frame).
+  const hips = SIDES.filter((s) => ok(s.hip));
+  let Hc;
+  if (hips.length === 2) Hc = lerp2(px(P.leftHip), px(P.rightHip), 0.5);
+  else {
+    const s = hips[0] || SIDES.find((x) => ok(x.kn)) || SIDES.find((x) => ok(x.an));
+    const base = hips[0] ? px(s.hip) : ok(s.kn) ? add(px(s.kn), u, -0.85 * T) : add(px(s.an), u, -1.7 * T);
+    // One leg: the midline is toward the person's other side.
+    const toMid = facing === 'side' ? 0 : (s.key === 'L' ? -1 : 1) * (facing === 'back' ? -1 : 1) * 0.18 * T;
+    Hc = add(base, v, toMid);
+  }
+  return { u, T, Hc, facing, frontSign };
 }
 
 // ------------------------------------------------------------ names
@@ -158,6 +228,13 @@ export function computeParts(lm, w, h, hands = null, out = null, opts = {}) {
   if (shBoth && facing !== 'side') est.push(1.3 * dist(ls, rs));
   if (S && headC) est.push(2.1 * dist(S, headC));
   if (E && facing === 'front') est.push(7.2 * E);
+  if (!est.length && S) {
+    // Just an arm in view: arm segments give the scale.
+    for (const s of SIDES) {
+      if (seen(s.sh) && seen(s.el)) est.push(1.55 * dist(px(s.sh), px(s.el)));
+      if (seen(s.el) && seen(s.wr)) est.push(1.97 * dist(px(s.el), px(s.wr)));
+    }
+  }
   const Test = est.length ? Math.max(...est) : 0;
 
   let Hc = null;
@@ -194,6 +271,16 @@ export function computeParts(lm, w, h, hands = null, out = null, opts = {}) {
     T = 7.2 * E;
     S = add(headC, V(0, 1), 0.45 * T);
     Hc = add(S, V(0, 1), T);
+  }
+  if (mode === 'none' && !headC) {
+    // Close up on the legs: build the frame from the legs, torso above the hips.
+    const lf = legFrame(lm, w, h);
+    if (lf) {
+      mode = 'legs';
+      T = lf.T;
+      Hc = lf.Hc;
+      S = add(Hc, lf.u, -T);
+    }
   }
   Object.assign(o, { S: S || V(0, 0), Hc: Hc || V(0, 0), T, mode, torsoOk: mode === 'full' || mode === 'upper', headC });
   if (mode === 'none') return pack(o);
@@ -281,121 +368,127 @@ export function computeParts(lm, w, h, hands = null, out = null, opts = {}) {
       part('jaw', 'Chin', 'chin (mentalis)', at(mouthC, -0.3, -0.5), at(mouthC, 0.3, -0.5), 0.24 * Ef);
     }
   }
-  if (!bodyOk) return pack(o);
+  // Legs close up: no torso in view, only the hips when they show.
+  if (!bodyOk && mode !== 'legs') return pack(o);
+  const hipSeen = seen(P.leftHip) || seen(P.rightHip);
 
-  // ---- neck
-  region('neck', 'Neck', S, add(S, up, 0.45 * T), 0.12 * T);
-  if (facing === 'side') {
-    sidePart('throat', 'Throat', 'front of the neck (trachea)', -0.05, 0.45, -0.4, 0.4, 0.06);
-    if (sex === 'male') sidePart('larynx', 'Adam’s apple', 'larynx (thyroid cartilage)', -0.25, 0.5, -0.3, 0.5, 0.055);
-    sidePart('neckSide', `${near.word} side of neck`, 'sternocleidomastoid', -0.05, 0.1, -0.4, 0, 0.05);
-    sidePart('neckBack', 'Back of neck', 'neck extensors and upper traps', -0.05, -0.45, -0.4, -0.4, 0.06);
-  } else if (facing === 'back') {
-    mid('neckBack', 'Back of neck', 'neck extensors (splenius, semispinalis)', -0.05, -0.42, 0.05);
-    pair('neckSide', 'side of neck', 'levator scapulae and upper traps', -0.05, 0.28, -0.35, 0.16, 0.045);
-  } else {
-    mid('throat', 'Throat', sex === 'male' ? 'front of the neck (trachea)' : 'front of the neck (trachea, thyroid)', -0.05, -0.42, 0.045);
-    if (sex === 'male') mid('larynx', 'Adam’s apple', 'larynx (thyroid cartilage)', -0.25, -0.3, 0.055);
-    pair('neckSide', 'side of neck', 'sternocleidomastoid', -0.02, 0.2, -0.38, 0.12, 0.045);
+  if (bodyOk) {
+    // ---- neck
+    region('neck', 'Neck', S, add(S, up, 0.45 * T), 0.12 * T);
+    if (facing === 'side') {
+      sidePart('throat', 'Throat', 'front of the neck (trachea)', -0.05, 0.45, -0.4, 0.4, 0.06);
+      if (sex === 'male') sidePart('larynx', 'Adam’s apple', 'larynx (thyroid cartilage)', -0.25, 0.5, -0.3, 0.5, 0.055);
+      sidePart('neckSide', `${near.word} side of neck`, 'sternocleidomastoid', -0.05, 0.1, -0.4, 0, 0.05);
+      sidePart('neckBack', 'Back of neck', 'neck extensors and upper traps', -0.05, -0.45, -0.4, -0.4, 0.06);
+    } else if (facing === 'back') {
+      mid('neckBack', 'Back of neck', 'neck extensors (splenius, semispinalis)', -0.05, -0.42, 0.05);
+      pair('neckSide', 'side of neck', 'levator scapulae and upper traps', -0.05, 0.28, -0.35, 0.16, 0.045);
+    } else {
+      mid('throat', 'Throat', sex === 'male' ? 'front of the neck (trachea)' : 'front of the neck (trachea, thyroid)', -0.05, -0.42, 0.045);
+      if (sex === 'male') mid('larynx', 'Adam’s apple', 'larynx (thyroid cartilage)', -0.25, -0.3, 0.055);
+      pair('neckSide', 'side of neck', 'sternocleidomastoid', -0.02, 0.2, -0.38, 0.12, 0.045);
+    }
+  
+    // ---- chest / upper back
+    region('chest', facing === 'back' ? 'Upper back' : 'Chest', tp(0.12, 0), tp(0.42, 0), 0.3 * T);
+    if (facing === 'front') {
+      const female = sex === 'female';
+      pair('trap', 'trap', 'upper trapezius', -0.08, 0.3, 0.0, 0.78, 0.06);
+      pair('clavicle', 'collarbone', 'clavicle', 0.02, 0.12, -0.01, 0.8, 0.03);
+      pair('upperChest', 'upper chest', 'clavicular (upper) head of the pectoralis major', 0.12, 0.2, 0.12, 0.62, 0.065);
+      if (female) pair('breast', 'breast', 'breast, over the pectoralis major', 0.28, 0.2, 0.31, 0.6, 0.12);
+      else pair('pec', 'pec', 'pectoralis major', 0.25, 0.18, 0.27, 0.62, 0.1);
+      pair('nipple', female ? 'nipple & areola' : 'nipple', female ? 'nipple and areola' : 'nipple', 0.3, 0.5, 0.3, 0.5, female ? 0.035 : 0.028);
+      mid('sternum', 'Sternum', 'breastbone', 0.04, 0.4, 0.03);
+      pair('lowerChest', female ? 'underbust' : 'lower chest', female ? 'fold under the breast (inframammary)' : 'sternal (lower) head of the pectoralis major', 0.42, 0.2, 0.43, 0.55, 0.05);
+      pair('serratus', 'serratus', 'serratus anterior (side ribs)', 0.3, 0.86, 0.48, 0.8, 0.06);
+      pair('armpit', 'armpit', 'axilla', 0.14, 0.95, 0.16, 0.95, 0.05);
+    } else if (facing === 'back') {
+      pair('trap', 'upper trap', 'upper trapezius', -0.05, 0.2, 0.02, 0.76, 0.075);
+      pair('midTrap', 'mid trap', 'middle trapezius', 0.14, 0.1, 0.2, 0.45, 0.065);
+      pair('rhomboid', 'rhomboid', 'rhomboids (between the shoulder blades)', 0.24, 0.12, 0.34, 0.3, 0.05);
+      pair('rotator', 'rotator cuff', 'infraspinatus, on the shoulder blade', 0.2, 0.55, 0.3, 0.6, 0.075);
+      pair('teres', 'teres major', 'teres major', 0.3, 0.82, 0.32, 0.84, 0.05);
+      pair('lat', 'lat', 'latissimus dorsi', 0.38, 0.7, 0.6, 0.45, 0.1);
+      mid('spine', 'Upper spine', 'thoracic spine', 0.0, 0.46, 0.025);
+    } else {
+      const female = sex === 'female';
+      sidePart(female ? 'breast' : 'pec', `${near.word} ${female ? 'breast' : 'pec'}`, female ? 'breast, over the pectoralis major' : 'pectoralis major', 0.14, 0.55, 0.4, 0.6, 0.13);
+      sidePart('nipple', `${near.word} nipple`, female ? 'nipple and areola' : 'nipple', 0.3, 0.98, 0.3, 0.98, 0.03);
+      sidePart('trap', `${near.word} upper trap`, 'upper trapezius', -0.03, -0.3, 0.1, -0.35, 0.08);
+      sidePart('lat', `${near.word} lat`, 'latissimus dorsi and rhomboids', 0.2, -0.55, 0.5, -0.55, 0.13);
+      sidePart('serratus', `${near.word} serratus`, 'serratus anterior and ribs', 0.25, 0, 0.5, 0.05, 0.08);
+      sidePart('armpit', `${near.word} armpit`, 'axilla', 0.12, 0, 0.12, 0, 0.05);
+    }
+  
+    // ---- midsection
+    region('core', facing === 'back' ? 'Lower back' : 'Midsection', tp(0.52, 0), tp(0.82, 0), 0.26 * T);
+    if (facing === 'front') {
+      const rows = [['abs1', 'Upper abs', 0.52], ['abs2', 'Middle abs', 0.64], ['abs3', 'Lower abs', 0.75]];
+      for (const [kind, name, tt] of rows) pair(kind, () => name, 'rectus abdominis (six-pack)', tt, 0.05, tt, 0.26, 0.055);
+      mid('navel', 'Belly button', 'navel (umbilicus)', 0.81, 0.81, 0.028);
+      pair('oblique', 'obliques', 'external obliques', 0.52, 0.62, 0.85, 0.55, 0.1);
+      pair('lowerBelly', () => 'Lower belly', 'lower rectus abdominis, below the belly button', 0.9, 0.05, 0.9, 0.3, 0.055);
+    } else if (facing === 'back') {
+      mid('spine', 'Lower spine', 'lumbar spine', 0.48, 0.92, 0.025);
+      pair('lowerBack', 'lower back', 'erector spinae', 0.5, 0.14, 0.9, 0.14, 0.07);
+      pair('lat', 'lat', 'latissimus dorsi (lower)', 0.5, 0.55, 0.64, 0.45, 0.08);
+      pair('ql', 'QL', 'quadratus lumborum (deep side of the lower back)', 0.72, 0.42, 0.86, 0.45, 0.055);
+      pair('oblique', 'obliques', 'external obliques (love handles)', 0.6, 0.8, 0.85, 0.75, 0.06);
+    } else {
+      sidePart('abs1', 'Abs', 'rectus abdominis', 0.5, 0.6, 0.85, 0.6, 0.12);
+      sidePart('oblique', `${near.word} obliques`, 'external obliques', 0.5, 0, 0.85, 0, 0.1);
+      sidePart('lowerBack', 'Lower back', 'erector spinae', 0.5, -0.6, 0.9, -0.6, 0.12);
+    }
   }
 
-  // ---- chest / upper back
-  region('chest', facing === 'back' ? 'Upper back' : 'Chest', tp(0.12, 0), tp(0.42, 0), 0.3 * T);
-  if (facing === 'front') {
-    const female = sex === 'female';
-    pair('trap', 'trap', 'upper trapezius', -0.08, 0.3, 0.0, 0.78, 0.06);
-    pair('clavicle', 'collarbone', 'clavicle', 0.02, 0.12, -0.01, 0.8, 0.03);
-    pair('upperChest', 'upper chest', 'clavicular (upper) head of the pectoralis major', 0.12, 0.2, 0.12, 0.62, 0.065);
-    if (female) pair('breast', 'breast', 'breast, over the pectoralis major', 0.28, 0.2, 0.31, 0.6, 0.12);
-    else pair('pec', 'pec', 'pectoralis major', 0.25, 0.18, 0.27, 0.62, 0.1);
-    pair('nipple', female ? 'nipple & areola' : 'nipple', female ? 'nipple and areola' : 'nipple', 0.3, 0.5, 0.3, 0.5, female ? 0.035 : 0.028);
-    mid('sternum', 'Sternum', 'breastbone', 0.04, 0.4, 0.03);
-    pair('lowerChest', female ? 'underbust' : 'lower chest', female ? 'fold under the breast (inframammary)' : 'sternal (lower) head of the pectoralis major', 0.42, 0.2, 0.43, 0.55, 0.05);
-    pair('serratus', 'serratus', 'serratus anterior (side ribs)', 0.3, 0.86, 0.48, 0.8, 0.06);
-    pair('armpit', 'armpit', 'axilla', 0.14, 0.95, 0.16, 0.95, 0.05);
-  } else if (facing === 'back') {
-    pair('trap', 'upper trap', 'upper trapezius', -0.05, 0.2, 0.02, 0.76, 0.075);
-    pair('midTrap', 'mid trap', 'middle trapezius', 0.14, 0.1, 0.2, 0.45, 0.065);
-    pair('rhomboid', 'rhomboid', 'rhomboids (between the shoulder blades)', 0.24, 0.12, 0.34, 0.3, 0.05);
-    pair('rotator', 'rotator cuff', 'infraspinatus, on the shoulder blade', 0.2, 0.55, 0.3, 0.6, 0.075);
-    pair('teres', 'teres major', 'teres major', 0.3, 0.82, 0.32, 0.84, 0.05);
-    pair('lat', 'lat', 'latissimus dorsi', 0.38, 0.7, 0.6, 0.45, 0.1);
-    mid('spine', 'Upper spine', 'thoracic spine', 0.0, 0.46, 0.025);
-  } else {
-    const female = sex === 'female';
-    sidePart(female ? 'breast' : 'pec', `${near.word} ${female ? 'breast' : 'pec'}`, female ? 'breast, over the pectoralis major' : 'pectoralis major', 0.14, 0.55, 0.4, 0.6, 0.13);
-    sidePart('nipple', `${near.word} nipple`, female ? 'nipple and areola' : 'nipple', 0.3, 0.98, 0.3, 0.98, 0.03);
-    sidePart('trap', `${near.word} upper trap`, 'upper trapezius', -0.03, -0.3, 0.1, -0.35, 0.08);
-    sidePart('lat', `${near.word} lat`, 'latissimus dorsi and rhomboids', 0.2, -0.55, 0.5, -0.55, 0.13);
-    sidePart('serratus', `${near.word} serratus`, 'serratus anterior and ribs', 0.25, 0, 0.5, 0.05, 0.08);
-    sidePart('armpit', `${near.word} armpit`, 'axilla', 0.12, 0, 0.12, 0, 0.05);
-  }
-
-  // ---- midsection
-  region('core', facing === 'back' ? 'Lower back' : 'Midsection', tp(0.52, 0), tp(0.82, 0), 0.26 * T);
-  if (facing === 'front') {
-    const rows = [['abs1', 'Upper abs', 0.52], ['abs2', 'Middle abs', 0.64], ['abs3', 'Lower abs', 0.75]];
-    for (const [kind, name, tt] of rows) pair(kind, () => name, 'rectus abdominis (six-pack)', tt, 0.05, tt, 0.26, 0.055);
-    mid('navel', 'Belly button', 'navel (umbilicus)', 0.81, 0.81, 0.028);
-    pair('oblique', 'obliques', 'external obliques', 0.52, 0.62, 0.85, 0.55, 0.1);
-    pair('lowerBelly', () => 'Lower belly', 'lower rectus abdominis, below the belly button', 0.9, 0.05, 0.9, 0.3, 0.055);
-  } else if (facing === 'back') {
-    mid('spine', 'Lower spine', 'lumbar spine', 0.48, 0.92, 0.025);
-    pair('lowerBack', 'lower back', 'erector spinae', 0.5, 0.14, 0.9, 0.14, 0.07);
-    pair('lat', 'lat', 'latissimus dorsi (lower)', 0.5, 0.55, 0.64, 0.45, 0.08);
-    pair('ql', 'QL', 'quadratus lumborum (deep side of the lower back)', 0.72, 0.42, 0.86, 0.45, 0.055);
-    pair('oblique', 'obliques', 'external obliques (love handles)', 0.6, 0.8, 0.85, 0.75, 0.06);
-  } else {
-    sidePart('abs1', 'Abs', 'rectus abdominis', 0.5, 0.6, 0.85, 0.6, 0.12);
-    sidePart('oblique', `${near.word} obliques`, 'external obliques', 0.5, 0, 0.85, 0, 0.1);
-    sidePart('lowerBack', 'Lower back', 'erector spinae', 0.5, -0.6, 0.9, -0.6, 0.12);
-  }
-
-  // ---- hips & pelvis
-  const hipA = seen(P.leftHip) ? lhp : tp(1, sgn(SIDES[0]), hh);
-  const hipB = seen(P.rightHip) ? rhp : tp(1, sgn(SIDES[1]), hh);
-  region('hips', facing === 'back' ? 'Glutes' : 'Hips', mode === 'full' ? hipA : tp(1, 0.9, hh), mode === 'full' ? hipB : tp(1, -0.9, hh), 0.2 * T);
-  if (facing === 'front') {
-    pair('lowerBelly', () => 'Lower belly', 'lower rectus abdominis, below the belly button', 0.88, 0.05, 0.9, 0.3, 0.055);
-    pair('hipBone', 'hip bone', 'iliac crest (front of the pelvis)', 0.88, 1.1, 0.9, 1.05, 0.05, hh);
-    pair('vline', 'V-line', 'inguinal crease', 0.92, 0.85, 1.05, 0.35, 0.035, hh);
-    pair('hipFlexor', 'hip flexor', 'iliopsoas', 0.98, 0.8, 1.1, 0.85, 0.07, hh);
-    for (const s of SIDES) if (seen(s.hip)) part('joint', `${s.word} hip joint`, 'hip joint (femoral head)', px(s.hip), null, 0.045 * T);
+  if (bodyOk || hipSeen) {
+    // ---- hips & pelvis
+    const hipA = seen(P.leftHip) ? lhp : tp(1, sgn(SIDES[0]), hh);
+    const hipB = seen(P.rightHip) ? rhp : tp(1, sgn(SIDES[1]), hh);
+    region('hips', facing === 'back' ? 'Glutes' : 'Hips', mode !== 'upper' ? hipA : tp(1, 0.9, hh), mode !== 'upper' ? hipB : tp(1, -0.9, hh), 0.2 * T);
+    if (facing === 'front') {
+      pair('lowerBelly', () => 'Lower belly', 'lower rectus abdominis, below the belly button', 0.88, 0.05, 0.9, 0.3, 0.055);
+      pair('hipBone', 'hip bone', 'iliac crest (front of the pelvis)', 0.88, 1.1, 0.9, 1.05, 0.05, hh);
+      pair('vline', 'V-line', 'inguinal crease', 0.92, 0.85, 1.05, 0.35, 0.035, hh);
+      pair('hipFlexor', 'hip flexor', 'iliopsoas', 0.98, 0.8, 1.1, 0.85, 0.07, hh);
+      for (const s of SIDES) if (seen(s.hip)) part('joint', `${s.word} hip joint`, 'hip joint (femoral head)', px(s.hip), null, 0.045 * T);
+      const g = genitalNames(sex);
+      mid('pubic', g.mons[0], g.mons[1], 1.0, 1.08, 0.06);
+    } else if (facing === 'back') {
+      pair('gluteMed', 'glute medius', 'gluteus medius (upper outer glute)', 0.9, 1.0, 0.98, 1.05, 0.08, hh);
+      pair('glute', 'glute', 'gluteus maximus', 1.02, 0.5, 1.18, 0.6, 0.12, hh);
+      mid('tailbone', 'Tailbone', 'sacrum and coccyx', 0.9, 1.03, 0.045);
+      pair('lowerBack', 'lower back', 'erector spinae', 0.86, 0.14, 0.9, 0.14, 0.06);
+    } else {
+      sidePart('hipFlexor', `${near.word} hip flexor`, 'iliopsoas', 0.95, 0.5, 1.1, 0.5, 0.08);
+      sidePart('glute', `${near.word} glute`, 'gluteus maximus', 0.95, -0.55, 1.15, -0.55, 0.14);
+      sidePart('gluteMed', `${near.word} glute medius`, 'gluteus medius (side of the hip)', 0.86, -0.1, 0.96, -0.1, 0.08);
+      sidePart('hipBone', `${near.word} hip bone`, 'iliac crest', 0.88, 0.25, 0.88, 0.25, 0.05);
+      if (seen(near.hip)) part('joint', `${near.word} hip joint`, 'hip joint (greater trochanter)', px(near.hip), null, 0.045 * T);
+    }
+  
+    // ---- crotch: genitals from the front, perineum and anus from behind
     const g = genitalNames(sex);
-    mid('pubic', g.mons[0], g.mons[1], 1.0, 1.08, 0.06);
-  } else if (facing === 'back') {
-    pair('gluteMed', 'glute medius', 'gluteus medius (upper outer glute)', 0.9, 1.0, 0.98, 1.05, 0.08, hh);
-    pair('glute', 'glute', 'gluteus maximus', 1.02, 0.5, 1.18, 0.6, 0.12, hh);
-    mid('tailbone', 'Tailbone', 'sacrum and coccyx', 0.9, 1.03, 0.045);
-    pair('lowerBack', 'lower back', 'erector spinae', 0.86, 0.14, 0.9, 0.14, 0.06);
-  } else {
-    sidePart('hipFlexor', `${near.word} hip flexor`, 'iliopsoas', 0.95, 0.5, 1.1, 0.5, 0.08);
-    sidePart('glute', `${near.word} glute`, 'gluteus maximus', 0.95, -0.55, 1.15, -0.55, 0.14);
-    sidePart('gluteMed', `${near.word} glute medius`, 'gluteus medius (side of the hip)', 0.86, -0.1, 0.96, -0.1, 0.08);
-    sidePart('hipBone', `${near.word} hip bone`, 'iliac crest', 0.88, 0.25, 0.88, 0.25, 0.05);
-    if (seen(near.hip)) part('joint', `${near.word} hip joint`, 'hip joint (greater trochanter)', px(near.hip), null, 0.045 * T);
-  }
-
-  // ---- crotch: genitals from the front, perineum and anus from behind
-  const g = genitalNames(sex);
-  if (facing === 'front') {
-    region('crotch', 'Groin', tp(1.05, 0), tp(1.28, 0), 0.08 * T);
-    mid('pubic', g.mons[0], g.mons[1], 1.0, 1.08, 0.06);
-    for (const [name, detail] of g.main) mid('genital', name, detail, 1.12, 1.22, 0.04);
-    if (g.low) mid('perineum', g.low[0], g.low[1], 1.22, 1.29, 0.045);
-    pair('vline', 'groin crease', 'inguinal fold, where the thigh meets the pelvis', 1.08, 0.5, 1.22, 0.3, 0.03, hh);
-  } else if (facing === 'back') {
-    region('crotch', 'Buttocks', tp(1.05, 0), tp(1.3, 0), 0.08 * T);
-    mid('cleft', 'Gluteal cleft', 'the crease between the buttocks', 1.04, 1.18, 0.025);
-    mid('anus', 'Anus', 'anus', 1.2, 1.22, 0.025);
-    mid('perineum', 'Perineum', 'perineum and pelvic floor (between the anus and the genitals)', 1.25, 1.3, 0.03);
-    pair('gluteFold', 'glute fold', 'where the glute meets the hamstring', 1.28, 0.25, 1.28, 0.85, 0.03, hh);
-    pair('glute', 'glute', 'gluteus maximus', 1.1, 0.5, 1.2, 0.6, 0.1, hh);
-  } else {
-    region('crotch', 'Groin', sp(1.0, 0.8), sp(1.2, 0.85), 0.08 * T);
-    sidePart('pubic', g.mons[0], g.mons[1], 1.0, 0.85, 1.06, 0.9, 0.055);
-    for (const [name, detail] of g.main) sidePart('genital', name, detail, 1.1, 0.9, 1.2, 0.9, 0.04);
-    if (g.low) sidePart('perineum', g.low[0], g.low[1], 1.2, 0.75, 1.26, 0.7, 0.04);
+    if (facing === 'front') {
+      region('crotch', 'Groin', tp(1.05, 0), tp(1.28, 0), 0.08 * T);
+      mid('pubic', g.mons[0], g.mons[1], 1.0, 1.08, 0.06);
+      for (const [name, detail] of g.main) mid('genital', name, detail, 1.12, 1.22, 0.04);
+      if (g.low) mid('perineum', g.low[0], g.low[1], 1.22, 1.29, 0.045);
+      pair('vline', 'groin crease', 'inguinal fold, where the thigh meets the pelvis', 1.08, 0.5, 1.22, 0.3, 0.03, hh);
+    } else if (facing === 'back') {
+      region('crotch', 'Buttocks', tp(1.05, 0), tp(1.3, 0), 0.08 * T);
+      mid('cleft', 'Gluteal cleft', 'the crease between the buttocks', 1.04, 1.18, 0.025);
+      mid('anus', 'Anus', 'anus', 1.2, 1.22, 0.025);
+      mid('perineum', 'Perineum', 'perineum and pelvic floor (between the anus and the genitals)', 1.25, 1.3, 0.03);
+      pair('gluteFold', 'glute fold', 'where the glute meets the hamstring', 1.28, 0.25, 1.28, 0.85, 0.03, hh);
+      pair('glute', 'glute', 'gluteus maximus', 1.1, 0.5, 1.2, 0.6, 0.1, hh);
+    } else {
+      region('crotch', 'Groin', sp(1.0, 0.8), sp(1.2, 0.85), 0.08 * T);
+      sidePart('pubic', g.mons[0], g.mons[1], 1.0, 0.85, 1.06, 0.9, 0.055);
+      for (const [name, detail] of g.main) sidePart('genital', name, detail, 1.1, 0.9, 1.2, 0.9, 0.04);
+      if (g.low) sidePart('perineum', g.low[0], g.low[1], 1.2, 0.75, 1.26, 0.7, 0.04);
+    }
   }
 
   // ---- limbs
@@ -407,7 +500,29 @@ export function computeParts(lm, w, h, hands = null, out = null, opts = {}) {
     trackedSides.add(side.key);
   }
 
-  const limbOk = (...ids) => ids.every((i) => vis(lm[i]) >= 0.35);
+  // Close up, a limb often runs off the edge of the frame. The joint past the
+  // edge is estimated (the model's guess, else straight on), so the part of
+  // the limb that is in view still gets its own name.
+  const inferred = new Map();
+  const offFrame = (p) => p.x < 0 || p.y < 0 || p.x > w || p.y > h;
+  const infer = (from, midJ, to, len) => {
+    if (vis(lm[midJ]) < 0.35 || vis(lm[to]) >= 0.35 || inferred.has(to)) return;
+    const m = px(midJ);
+    const guess = px(to);
+    const d = dist(m, guess);
+    if (d > 0.5 * len && d < 1.6 * len && offFrame(guess)) return inferred.set(to, guess);
+    if (vis(lm[from]) < 0.35) return;
+    const p = add(m, unit(px(from), m), len);
+    if (offFrame(p)) inferred.set(to, p);
+  };
+  for (const s of SIDES) {
+    for (const [a, b, c, l1, l2] of [[s.sh, s.el, s.wr, 0.65, 0.5], [s.hip, s.kn, s.an, 0.85, 0.85]]) {
+      infer(a, b, c, l2 * T);
+      infer(c, b, a, l1 * T);
+    }
+  }
+  const jp = (i) => inferred.get(i) || px(i);
+  const limbOk = (...ids) => ids.every((i) => vis(lm[i]) >= 0.35 || inferred.has(i));
   for (const s of SIDES) {
     const g2 = sgn(s);
     const sideOn = facing === 'side';
@@ -423,7 +538,7 @@ export function computeParts(lm, w, h, hands = null, out = null, opts = {}) {
     const L = (kind, name, detail, seg) => part(kind, `${word} ${name}`, detail, seg[0], seg[1], seg[2]);
     const joint = (name, detail, p, r) => part('joint', `${word} ${name}`, detail, p, null, r * T);
 
-    const sh = px(s.sh), el = px(s.el), wr = px(s.wr);
+    const sh = jp(s.sh), el = jp(s.el), wr = jp(s.wr);
     if (limbOk(s.sh, s.el)) {
       // Shoulder cap
       const Rs = 0.14 * T;
@@ -481,7 +596,7 @@ export function computeParts(lm, w, h, hands = null, out = null, opts = {}) {
       }
     }
 
-    const hip = px(s.hip), kn = px(s.kn), an = px(s.an);
+    const hip = jp(s.hip), kn = jp(s.kn), an = jp(s.an);
     if (limbOk(s.hip, s.kn)) {
       const Rt = 0.17 * T;
       region(`thigh${s.key}`, `${word} thigh`, hip, kn, Rt, { side: s });

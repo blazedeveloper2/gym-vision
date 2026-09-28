@@ -37,6 +37,11 @@ export class ScanTool {
     return this.layers.fingers;
   }
 
+  /** Close-ups (just a leg or an arm, no face) get their own joint finder. */
+  get wantsLimbs() {
+    return true;
+  }
+
   enter() {
     this.syncChips();
     this.tap = null;
@@ -170,7 +175,7 @@ export class ScanTool {
     if (lm) this.noPersonSince = null;
     else this.noPersonSince ??= frame.t;
     const lost = this.noPersonSince != null && frame.t - this.noPersonSince > 800;
-    banner(lost && !this.tap ? 'No one in view — step back so your whole body is visible' : '', 'info');
+    banner(lost && !this.tap ? 'No body in view — point the camera at yourself' : '', 'info');
     $('scanHint').hidden = !!this.tap;
 
     return {

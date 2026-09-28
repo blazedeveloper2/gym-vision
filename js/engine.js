@@ -1,4 +1,4 @@
-import { MP_BUNDLE, MP_WASM, POSE_MODELS, HAND_MODEL_URL } from './config.js';
+import { MP_BUNDLE, MP_WASM, POSE_MODELS, HAND_MODEL_URL, SEGMENTER_MODEL_URL } from './config.js';
 
 // MediaPipe loads lazily so the home screen appears instantly and a network
 // failure can be reported instead of breaking the page.
@@ -127,6 +127,62 @@ export class PoseEngine {
     this.task?.close();
     this.task = null;
     this.key = '';
+  }
+}
+
+/**
+ * Person segmentation on its own (selfie segmenter), for close-ups where the
+ * pose landmarker finds no one and so gives no mask. Like PoseEngine it runs
+ * in the GL stage's context, so the GL stage samples its mask directly.
+ */
+export class BodySegmenter {
+  constructor({ canvas = null } = {}) {
+    this.canvas = canvas;
+    this.task = null;
+    this.loading = null;
+    this.lastTs = 0;
+  }
+
+  get ready() {
+    return !!this.task;
+  }
+
+  async load(delegate) {
+    if (this.task) return;
+    this.loading ??= (async () => {
+      const [{ ImageSegmenter }, fs] = await Promise.all([loadVision(), fileset()]);
+      const { task } = await createWithFallback(
+        (d) =>
+          ImageSegmenter.createFromOptions(fs, {
+            baseOptions: { modelAssetPath: SEGMENTER_MODEL_URL, delegate: d },
+            runningMode: 'VIDEO',
+            outputConfidenceMasks: true,
+            outputCategoryMask: false,
+            ...(this.canvas ? { canvas: this.canvas } : {}),
+          }),
+        delegate,
+      );
+      this.task = task;
+    })().finally(() => (this.loading = null));
+    return this.loading;
+  }
+
+  /** `cb(mask)` runs synchronously while the mask is valid. Returns false if it didn't run. */
+  segment(source, ts, cb) {
+    if (!this.task) return false;
+    if (ts <= this.lastTs) ts = this.lastTs + 1;
+    this.lastTs = ts;
+    let ran = false;
+    this.task.segmentForVideo(source, ts, (r) => {
+      ran = true;
+      cb(r.confidenceMasks?.[0] || null);
+    });
+    return ran;
+  }
+
+  close() {
+    this.task?.close();
+    this.task = null;
   }
 }
 
