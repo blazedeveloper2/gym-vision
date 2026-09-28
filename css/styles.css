@@ -469,6 +469,8 @@ select, input[type="number"] {
 .height-row.big { margin: 14px 0 18px; }
 .height-row.big input { font-size: 22px; font-weight: 700; padding: 12px; }
 .height-row .unit { color: var(--muted); font-weight: 650; }
+.unit-group { flex: 1; min-width: 0; display: flex; gap: 6px; align-items: center; }
+.unit-group input { min-width: 0; }
 .choice { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 3px; border-radius: 12px; background: var(--field); border: 1px solid var(--border); }
 .choice label { position: relative; }
 .choice input { position: absolute; opacity: 0; pointer-events: none; }

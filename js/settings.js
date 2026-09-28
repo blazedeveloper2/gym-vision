@@ -27,6 +27,7 @@ export const DEFAULTS = {
   sex: '', // '' (not set) | 'male' | 'female' — picks anatomical names in Body Scan
   heightCm: null,
   weightKg: null,
+  weightUnit: usesInches() ? 'lb' : 'kg',
   guidesSeen: {},
 };
 

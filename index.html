@@ -207,16 +207,25 @@
         <div class="field">
           <label for="setHeight">Height</label>
           <div class="height-row">
-            <input type="number" id="setHeight" inputmode="decimal" min="100" max="250" step="0.5" placeholder="cm">
-            <select id="setUnits" aria-label="Units"><option value="cm">cm · kg</option><option value="in">in · lb</option></select>
+            <span class="unit-group" id="heightCmBox">
+              <input type="number" id="setHeight" inputmode="decimal" min="100" max="250" step="0.5" placeholder="cm" aria-label="Height in centimetres">
+              <span class="unit">cm</span>
+            </span>
+            <span class="unit-group" id="heightFtBox" hidden>
+              <input type="number" id="setHeightFt" inputmode="numeric" min="3" max="8" step="1" placeholder="5" aria-label="Height, feet">
+              <span class="unit">ft</span>
+              <input type="number" id="setHeightIn" inputmode="decimal" min="0" max="11.5" step="0.5" placeholder="8" aria-label="Height, inches">
+              <span class="unit">in</span>
+            </span>
+            <select id="setUnits" aria-label="Height units"><option value="cm">cm</option><option value="in">ft &amp; in</option></select>
           </div>
-          <p class="hint">Turns pixels into real sizes for measurements.</p>
+          <p class="hint">Turns pixels into real sizes for measurements (shown in the same units).</p>
         </div>
         <div class="field">
           <label for="setWeight">Weight</label>
           <div class="height-row">
             <input type="number" id="setWeight" inputmode="decimal" min="20" max="300" step="0.1" placeholder="kg">
-            <span class="unit" id="setWeightUnit">kg</span>
+            <select id="setWeightUnit" aria-label="Weight units"><option value="kg">kg</option><option value="lb">lb</option></select>
           </div>
         </div>
 

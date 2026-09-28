@@ -73,43 +73,62 @@ export function bindSettings(app, hooks) {
     hooks.exercise();
   });
 
-  // Height, shown in the chosen unit.
-  const height = $('setHeight');
+  // Height: centimetres, or feet + inches (e.g. 5 ft 8 in). Stored in cm.
   const units = $('setUnits');
+  const cm = $('setHeight');
+  const ft = $('setHeightFt');
+  const inch = $('setHeightIn');
   const showHeight = () => {
+    const imperial = s.units === 'in';
     units.value = s.units;
-    height.placeholder = s.units === 'in' ? 'inches' : 'cm';
-    height.min = s.units === 'in' ? 40 : 100;
-    height.max = s.units === 'in' ? 100 : 250;
-    height.value = s.heightCm ? (s.units === 'in' ? (s.heightCm / 2.54).toFixed(1) : s.heightCm.toFixed(1)) : '';
+    $('heightCmBox').hidden = imperial;
+    $('heightFtBox').hidden = !imperial;
+    cm.value = s.heightCm ? s.heightCm.toFixed(1) : '';
+    const totalIn = s.heightCm ? Math.round((s.heightCm / 2.54) * 2) / 2 : null; // nearest ½ inch
+    ft.value = totalIn ? Math.floor(totalIn / 12) : '';
+    inch.value = totalIn ? +(totalIn % 12).toFixed(1) : '';
   };
-  const weight = $('setWeight');
-  const showWeight = () => {
-    const lb = s.units === 'in';
-    $('setWeightUnit').textContent = lb ? 'lb' : 'kg';
-    weight.placeholder = lb ? 'lb' : 'kg';
-    weight.min = lb ? 45 : 20;
-    weight.max = lb ? 660 : 300;
-    weight.value = s.weightKg ? (lb ? s.weightKg / 0.45359237 : s.weightKg).toFixed(1) : '';
+  const saveHeight = (value) => {
+    s.heightCm = value >= 100 && value <= 250 ? value : null;
+    app.persist();
   };
-  showHeight();
-  showWeight();
-  weight.addEventListener('change', () => {
-    const v = Number(weight.value);
-    s.weightKg = v > 0 ? (s.units === 'in' ? v * 0.45359237 : v) : null;
-    app.persist();
-  });
-  height.addEventListener('change', () => {
-    const v = Number(height.value);
-    s.heightCm = v > 0 ? (s.units === 'in' ? v * 2.54 : v) : null;
-    app.persist();
-  });
+  cm.addEventListener('change', () => saveHeight(Number(cm.value)));
+  const fromFeet = () => {
+    if (ft.value === '') return;
+    saveHeight((Number(ft.value) * 12 + Number(inch.value || 0)) * 2.54);
+  };
+  ft.addEventListener('change', fromFeet);
+  inch.addEventListener('change', fromFeet);
   units.addEventListener('change', () => {
     s.units = units.value;
     app.persist();
     showHeight();
+  });
+
+  // Weight: kilograms or pounds. Stored in kg.
+  const LB = 0.45359237;
+  const weight = $('setWeight');
+  const weightUnit = $('setWeightUnit');
+  const showWeight = () => {
+    const lb = s.weightUnit === 'lb';
+    weightUnit.value = s.weightUnit;
+    weight.placeholder = lb ? 'lb' : 'kg';
+    weight.min = lb ? 45 : 20;
+    weight.max = lb ? 660 : 300;
+    weight.value = s.weightKg ? (lb ? s.weightKg / LB : s.weightKg).toFixed(1) : '';
+  };
+  weight.addEventListener('change', () => {
+    const v = Number(weight.value);
+    s.weightKg = v > 0 ? (s.weightUnit === 'lb' ? v * LB : v) : null;
+    app.persist();
+  });
+  weightUnit.addEventListener('change', () => {
+    s.weightUnit = weightUnit.value;
+    app.persist();
     showWeight();
   });
+  showHeight();
+  showWeight();
 
   return {
     refresh() {
