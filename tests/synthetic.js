@@ -45,13 +45,13 @@ function elbowBetween(S, Wr, seg = 150) {
   return { x: mx + n.x * off, y: my + n.y * off };
 }
 
-/** Side-on push-up (head on the left) at a given elbow angle. */
-export function pushupPose({ elbow, sag = 0, wrist = null, shoulder = null }) {
+/** Side-on push-up (head on the left) at a given elbow angle; `ankle` moves the feet (e.g. up on a bench). */
+export function pushupPose({ elbow, sag = 0, wrist = null, shoulder = null, ankle = null }) {
   const Wr = wrist || { x: 400, y: 600 };
   const d = Math.sqrt(2 * 150 * 150 * (1 - Math.cos(rad(elbow))));
   const S = shoulder || { x: Wr.x, y: Wr.y - d };
   const E = elbowBetween(S, Wr);
-  const A = { x: 1000, y: 590 };
+  const A = ankle || { x: 1000, y: 590 };
   const Hp = { x: S.x + 0.45 * (A.x - S.x), y: S.y + 0.45 * (A.y - S.y) + sag };
   const K = { x: Hp.x + 0.55 * (A.x - Hp.x), y: Hp.y + 0.55 * (A.y - Hp.y) };
   return sideView({

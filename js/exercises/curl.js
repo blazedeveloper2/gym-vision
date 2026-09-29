@@ -1,5 +1,6 @@
 import { P, vis, toPx, angleFn, Ema, FacingTracker, mid, leanDeg } from '../geometry.js';
 import { RepCounter } from './base.js';
+import { Frame, ChestSide, LEFT, RIGHT, sub, dot, unit } from './kit.js';
 
 const ARMS = [
   { sh: P.leftShoulder, el: P.leftElbow, wr: P.leftWrist, hip: P.leftHip },
@@ -9,13 +10,15 @@ const ARMS = [
 /**
  * Bicep curls — both arms together or alternating. Progress follows whichever
  * arm is curling (elbow ~155° straight → ~60° at the top). Checks that the
- * upper arm stays by the side and the body doesn't swing.
+ * upper arm stays by the side (side-on it can tell forward from back) and the
+ * body doesn't swing.
  */
 export class CurlAnalyzer extends RepCounter {
   static defaults = {
     restAngle: 155,
     topAngle: 60,
     maxSwing: 35, // upper arm forward of the torso (deg)
+    maxBack: 20, // ...or behind it (side view)
     maxRaise: 65, // beyond this it's a raise or a flex pose, not a curl
     maxSway: 15, // torso lean change from the start (deg)
   };
@@ -33,12 +36,14 @@ export class CurlAnalyzer extends RepCounter {
     faults: {
       raise: { rep: 'elbow came up', miss: 'Not counted — keep your elbow down by your side and curl', missVoice: 'Elbows down' },
       swing: { live: 'Keep your elbows pinned to your sides', rep: 'elbow drifted forward', voice: 'Elbows in', cue: 'Elbows in' },
+      back: { live: 'Don’t let your elbows drift behind you', rep: 'elbow drifted back', voice: 'Elbows by your sides', cue: 'Elbows by your sides' },
       sway: { live: 'Don’t swing your body — keep your torso still', rep: 'body swung', voice: 'No swinging', cue: 'Stay still' },
     },
   };
 
   reset() {
     this.facingT = new FacingTracker();
+    this.chest = new ChestSide();
     super.reset();
   }
 
@@ -72,8 +77,17 @@ export class CurlAnalyzer extends RepCounter {
 
     const active = seen.reduce((a, b) => (b.p > a.p ? b : a));
     const progress = active.p;
+    // Side-on, which side of the torso the elbow is on: + in front, − behind.
+    let swing = active.swing;
+    if (!front) {
+      const f = new Frame(frame);
+      const S = active.sh === P.leftShoulder ? LEFT : RIGHT;
+      const chest = this.chest.update(f, S, unit(sub(f.p(S.sh), f.p(S.hip))));
+      if (chest && dot(sub(f.p(S.el), f.p(S.sh)), chest) < 0) swing = -swing;
+    }
     const faults = [];
-    if (progress > 0.2 && active.swing > o.maxSwing) faults.push('swing');
+    if (progress > 0.2 && swing > o.maxSwing) faults.push('swing');
+    if (progress > 0.2 && swing < -o.maxBack) faults.push('back');
     if (progress > 0.2 && Math.abs(lean - this.restLean) > o.maxSway) faults.push('sway');
 
     const e = Math.round(active.elbow);
@@ -81,7 +95,7 @@ export class CurlAnalyzer extends RepCounter {
     for (const arm of seen) {
       const tone = arm === active ? 'go' : 'neutral';
       overlay.push(
-        { type: 'seg', a: arm.sh, b: arm.el, tone: arm === active ? 'fault:swing' : 'neutral', w: 6 },
+        { type: 'seg', a: arm.sh, b: arm.el, tone: arm === active ? 'fault:swing|back' : 'neutral', w: 6 },
         { type: 'seg', a: arm.el, b: arm.wr, tone },
         { type: 'dots', ids: [arm.el, arm.wr], tone },
       );
@@ -93,10 +107,10 @@ export class CurlAnalyzer extends RepCounter {
       progress,
       faults,
       elbow: active.elbow,
-      swing: active.swing,
+      swing,
       stats: [
         { label: 'Elbow', value: `${e}°` },
-        { label: 'Upper arm', value: `${Math.round(active.swing)}°`, fault: 'swing' },
+        { label: 'Upper arm', value: `${Math.round(swing)}°`, fault: 'swing|back' },
       ],
       overlay,
     };

@@ -132,6 +132,67 @@ svg .fill { fill: currentColor; stroke: none; }
 .ex-card .blurb { color: var(--muted); font-size: 13px; line-height: 1.35; }
 .badge { align-self: flex-start; margin-top: 2px; padding: 3px 8px; border-radius: 999px; background: rgba(255, 255, 255, 0.06); color: var(--muted); font-size: 11.5px; font-weight: 650; }
 
+/* Search */
+.search { position: relative; display: block; margin: 0 0 18px; }
+.search .search-ico { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: var(--muted); display: grid; }
+.search input {
+  width: 100%;
+  padding: 12px 14px 12px 40px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px; /* no iOS zoom on focus */
+}
+.search input:focus { outline: none; border-color: var(--accent); }
+.empty { margin: 0; padding: 14px; color: var(--muted); }
+
+/* My workouts */
+.section-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.section-head .section-title { margin: 0; }
+.link-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: 999px; border: 1px solid var(--border-strong); background: transparent; color: var(--text); font-size: 13.5px; font-weight: 650; }
+.link-btn .ico { width: 16px; height: 16px; color: var(--accent); }
+.day-tabs { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; padding: 3px; margin-bottom: 10px; border-radius: 14px; border: 1px solid var(--border); background: var(--card); }
+.day-tab { position: relative; padding: 9px 0; border: 0; border-radius: 11px; background: transparent; color: var(--muted); font-weight: 700; font-size: 14px; }
+.day-tab[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); }
+.day-tab.today::after { content: ""; position: absolute; left: 50%; bottom: 3px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: currentColor; }
+.home .card { background: var(--card); -webkit-backdrop-filter: none; backdrop-filter: none; }
+.card.day-card { padding: 6px 6px 8px; border-radius: 18px; }
+.day-head { padding: 10px 10px 4px; }
+.day-head h3 { margin: 2px 0 0; font-size: 19px; }
+.day-section { display: grid; gap: 2px; }
+.day-tag { padding: 12px 10px 4px; font-size: 11.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.ex-list { display: grid; gap: 2px; }
+.card.ex-list { padding: 6px; }
+.ex-item { border-radius: 14px; }
+.day-section .ex-item + .ex-item { border-top: 1px solid var(--border); border-radius: 0; }
+.ex-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 8px; border: 0; border-radius: 14px; background: transparent; text-align: left; transition: background 0.15s; }
+.ex-row:hover { background: var(--card-hover); }
+.ex-row:active { background: rgba(255, 255, 255, 0.07); }
+.ex-row .fig-wrap { display: grid; place-items: center; flex: none; width: 44px; height: 44px; border-radius: 12px; background: rgba(255, 255, 255, 0.05); color: var(--text); }
+.ex-row .fig { width: 34px; height: 34px; }
+.ex-row-text { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.ex-row-text strong { font-size: 15.5px; line-height: 1.25; }
+.ex-row .meta { color: var(--muted); font-size: 13px; line-height: 1.3; }
+.ex-row .badge { flex: none; margin: 0; }
+.ex-row .chev { flex: none; display: grid; opacity: 0.6; }
+.ex-row .chev .ico { width: 18px; height: 18px; }
+.ex-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 8px 8px 64px; }
+.mini-chip { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border-strong); background: transparent; color: var(--text); font-size: 12.5px; font-weight: 650; text-align: left; }
+.mini-chip .ico { width: 14px; height: 14px; color: var(--accent); }
+.mini-note { color: var(--muted); font-size: 12px; }
+
+/* Skill levels sheet */
+.ladder { padding-top: 6px; scroll-margin-top: 64px; }
+.ladder h3 { margin: 14px 0 6px; font-size: 16px; }
+.ladder-step { display: flex; align-items: center; gap: 4px; border-radius: 14px; }
+.ladder-step.current { background: var(--accent-soft); }
+.level-pick { flex: none; display: grid; place-items: center; width: 26px; height: 26px; margin-left: 6px; padding: 0; border-radius: 50%; border: 2px solid var(--border-strong); background: transparent; color: var(--accent-ink); }
+.level-pick[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); }
+.level-pick .ico { width: 16px; height: 16px; stroke-width: 3; }
+.ladder-step .ex-row { flex: 1; min-width: 0; }
+
 .home-foot { margin-top: 8px; text-align: center; }
 .install { padding: 12px 14px; border-radius: 14px; background: rgba(255, 255, 255, 0.04); color: var(--muted); font-size: 14px; }
 .install b { color: var(--text); }
@@ -342,7 +403,9 @@ svg .fill { fill: currentColor; stroke: none; }
 }
 .guide-art { display: grid; place-items: center; height: 76px; color: var(--accent); }
 .guide-art .fig { width: 72px; height: 72px; }
-.guide ol { margin: 6px 0 12px; padding-left: 20px; font-size: 14px; display: grid; gap: 5px; }
+.guide ol, .guide ul { margin: 4px 0 10px; padding-left: 20px; font-size: 14px; display: grid; gap: 5px; }
+.guide-title { margin: 8px 0 0; font-size: 11.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.guide { max-height: calc(100dvh - 180px); overflow-y: auto; }
 
 .filebar {
   position: absolute;
@@ -486,6 +549,8 @@ select, input[type="number"] {
 .about { margin: 8px 0 0; padding-top: 14px; border-top: 1px solid var(--border); font-size: 13px; color: var(--muted); }
 
 .pick-list { display: grid; gap: 8px; }
+.pick-search { width: 100%; margin: 4px 0 6px; padding: 11px 13px; border-radius: 12px; border: 1px solid var(--border); background: var(--field); color: var(--text); font: inherit; font-size: 16px; }
+.pick-group .group-title { margin: 14px 0 8px; }
 .pick { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--border); background: var(--card); text-align: left; }
 .pick .fig-wrap { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 11px; background: rgba(255, 255, 255, 0.05); }
 .pick .fig { width: 30px; height: 30px; }

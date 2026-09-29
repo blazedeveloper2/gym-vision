@@ -1,6 +1,6 @@
 # Gym Vision
 
-An AI body camera that runs in your browser. It gives live full-body tracking, a body-part identifier, body measurements to track growth, and form feedback for 8 exercises. It installs to your phone's home screen, and all processing happens on your device.
+An AI body camera that runs in your browser. It gives live full-body tracking, a body-part identifier, body measurements to track growth, and rep counting with spoken form feedback for 88 exercises: your own weekly training program plus 8 general exercises. It installs to your phone's home screen, and all processing happens on your device.
 
 **Live app:** https://blazedeveloper2.github.io/gym-vision/
 
@@ -30,20 +30,51 @@ An AI body camera that runs in your browser. It gives live full-body tracking, a
 Estimates shoulder width, chest, waist, hips, upper arms (relaxed and flexed), forearms, mid-thighs and calves from your height and your body outline. A guided capture takes the front view, then an optional flex pose and an optional side view. Each capture takes about 1.5 seconds, is averaged over up to 20 frames and is shown with ± uncertainty. Arms held close to the body aren't counted as chest or waist, and it tells you if your head or feet are cut off. Results are saved to a history with trends and CSV export.
 
 ### Exercises
-Each exercise counts reps (or times the hold) and gives live form cues:
+Each exercise counts reps (or times the hold), gives live form cues on screen and speaks them. The home screen has two sections, plus a search box that finds any exercise by name:
+
+- **My workouts:** the weekly program from the Bartleby gym app (Edrin's plan). Each day lists its exercises in order with sets × reps, and today's day opens first.
+  - **Alternates** follow your equipment (Settings → Your equipment: pull-up bar, ab wheel, barbell). Without a bar you get the no-bar version, for example.
+  - **Skill ladders** (handstand, planche, front lever, push-up and handstand push-up progressions, rollouts, hollow and arch work) show the step you're on and what the next step needs. Tap **Skill levels** to move up or down a step.
+  - Your equipment and ladder steps are read once from the Bartleby app when both run on the same site. Gym Vision never writes to Bartleby's data.
+- **General exercises:** push-ups, squats, lunges, bicep curls, shoulder press, lateral raises, jumping jacks and plank.
+
+Each exercise shows its camera setup and what counts before you start. Before your first rep, the voice reads out anything you need to fix, such as "Turn side on to the camera" or "Hang from the bar".
+
+#### What makes a rep count
+The goal is that you can't cheat a rep:
+- **Full range:** a rep has to reach the target (chin over the bar, dumbbells to the chest) and come all the way back (dead hang, straight arms). Half reps don't count.
+- **Start position:** a rep only starts once you've been seen in the start position. You can't jump to the top of a pull-up and lower down for a rep.
+- **The right body part has to move:** in a pull-up the body rises to the bar; in a row the hand comes up from a hang while the torso stays still. Relative to the body, a pull-up looks like a shoulder press, but the hands stay on the bar, so it doesn't count as one.
+- **The right posture:** lying on a bench with your arms up isn't a preacher curl or a hang, and leaning back on an incline bench isn't a shoulder press. Exercises that need a side view ask you to turn when they see you head-on.
+- **Two signals, not one:** depth needs the dumbbells low *and* the elbows bent, so one misread wrist can't fake a rep.
+- **Tempo:** negatives must be slow, and some exercises need a pause.
+
+A rep that doesn't count tells you why, on screen and out loud, for example "Not counted — keep your hands on the bar and pull your body up".
+
+#### General exercises
 
 | Exercise | Checks |
 | --- | --- |
 | Push-ups | depth, hip sag or pike, lockout, tempo; the chest has to go down, not just the elbows bend |
 | Squats | depth (half, parallel or deep), forward lean, knees caving in; the knees have to bend |
-| Lunges | front-knee depth, upright torso; the hips have to drop (kicking a foot back doesn't count) |
-| Bicep curls | full range, elbow swing, body sway; raising the elbow forward doesn't count |
-| Shoulder press | lockout, even arms, leaning back |
-| Lateral raises | shoulder height, bent elbows, even arms; raising the arms forward doesn't count |
+| Lunges | front-knee depth, upright torso; the feet must be split and the hips have to drop |
+| Bicep curls | full range, elbow swing, leaning back; raising the elbow forward doesn't count |
+| Shoulder press | lockout, even arms, leaning back; the weights have to travel, sitting or standing tall |
+| Lateral raises | shoulder height, bent elbows, even arms; raising the arms forward or overhead doesn't count |
 | Jumping jacks | hands overhead and feet wide, both required; both feet must leave the floor (stepping out doesn't count) |
 | Plank | hold timer, hip sag or pike, form %; the timer pauses with your hips on the floor or knees down |
 
-A rep that doesn't count tells you why, for example "Not counted — jump! Both feet have to leave the floor".
+#### Program exercises
+
+| Group | Exercises | What's checked |
+| --- | --- | --- |
+| Chest | dumbbell bench and incline press, flyes | depth with bent elbows, lockout, elbow flare, hips on the bench, bench angle, controlled lowering; bending the elbows in a fly turns it into a press and doesn't count |
+| Arms | overhead triceps extensions, preacher, hammer and incline curls, wrist and reverse wrist curls | full range, elbows up or on the pad, shoulders back; lifting the upper arm off the pad or the forearms off the bench doesn't count |
+| Back | pull-ups, chin-ups, single-arm and chest-supported rows, pullovers, reverse flyes, reverse snow angels | dead hang to chin over the bar, no kipping or craning; the hand rows up from a hang with the torso still; fixed elbows in pullovers and flyes |
+| Legs | Bulgarian split squats, heel-elevated front and goblet squats, RDLs, hip thrusts, leg curls, calf raises | depth, rear foot up, hinge not squat, full hip extension without arching, hips down, straight legs and a pause in calf raises |
+| Core | dead bugs, crunches, reverse crunches, hanging leg raises, side plank reach-throughs, rollouts, hollow and arch holds and rocks, reverse hypers | range and body shape; legs past level without swinging; rollouts to full extension with straight arms and no sag |
+| Skills | handstands, kick-ups, straddle press, frog stands, planches, front levers, scapular pulls and push-ups, wrist rocks | hold timers that pause when the shape breaks (hips level, legs straight, arms locked); kick-up attempts are counted |
+| Push-up and HSPU ladders | diamond, decline, archer and one-arm push-ups, pike and elevated pike push-ups, wall, deficit and freestanding handstand push-ups, negatives | depth and lockout; hands together for diamonds, one arm straight for archers, feet up for declines, head to the floor for HSPUs, slow negatives |
 
 **Video mode** analyzes a clip you recorded, with slow-motion playback, so it also works on a PC with no camera.
 
@@ -56,8 +87,10 @@ A rep that doesn't count tells you why, for example "Not counted — jump! Both 
 In **Settings → Your profile** you can set your sex, height and weight. Height is used for measurements; sex picks the anatomical names in Body Scan.
 
 Each exercise shows its own camera setup. In general:
-- **Push-ups and plank:** phone on the floor, side-on.
-- **Everything else:** phone about 2–3 m away at hip or chest height.
+- **Push-ups, plank and floor work:** phone on the floor, side-on.
+- **Bench exercises:** phone at bench height, about 2 m away, side-on.
+- **Everything else:** phone about 2–3 m away at hip or chest height. Most program exercises need a side view.
+- **Small movements** (calf raises, wrist curls, scapular pulls and push-ups) move only a few centimetres, so put the phone closer. The app tells you if it needs a bigger view.
 
 The back ultra-wide camera (in Settings) makes it easier to fit your whole body in frame.
 
@@ -75,8 +108,11 @@ The back ultra-wide camera (in Settings) makes it easier to fit your whole body 
 - **Exercise engine** ([`js/exercises/base.js`](js/exercises/base.js)):
   - Each exercise maps a frame to *progress*: 0 is the start position and 1 is the target, such as push-up depth.
   - The shared engine turns progress into reps and handles form faults, which must last about 0.35 s before they're flagged.
-  - It flags reps that don't return to the start position.
+  - Reps must start in the start position and return to it. Each exercise adds its own anti-cheat checks (`repBlocks`), and tempo rules cover slow negatives and pauses.
+  - Holds time only while the shape is held, with a grace period for a wobble.
   - Push-ups also require your shoulders to rise before a rep ends, so hand-release push-ups don't double count.
+- **Measuring kit** ([`js/exercises/kit.js`](js/exercises/kit.js)): heights are measured in arm or torso lengths, so they read the same close up or far away. It also works out which way your chest faces (from the face, bent knees and toes), so it still works lying on a bench with your head hanging back.
+- **Program** ([`js/program.js`](js/program.js)): the weekly plan, skill ladders and equipment alternates.
 - **Body parts** ([`js/body/parts.js`](js/body/parts.js)):
   - Regions are capsules built from pose landmarks, assigned per pixel inside the body mask.
   - Detailed names come from each point's position within its region (along the limb, inner or outer, front or back half), plus which way you face. Face and finger landmarks are used where they're available.
@@ -100,11 +136,12 @@ Then open http://localhost:8000. The camera works on `localhost`. Your phone nee
 node --test
 ```
 
-There are 81 tests, and none need a camera:
-- every exercise, driven by a small 3D body model filmed from the front, side or back
+There are 220 tests, and none need a camera:
+- every exercise, driven by a small 3D body model filmed from the front, side or back, including cheats that must not count (half reps, kipping, swinging, lifting off the pad)
 - measurements on a synthetic silhouette with known sizes
 - the body-part identifier from every angle
 - regression checks on pose data recorded from real workout videos (see [`tests/fixtures`](tests/fixtures/README.md))
+- a cross-check that runs all 88 exercises over every recorded clip: nothing may count reps that aren't there
 
 ## Project layout
 
@@ -122,7 +159,8 @@ js/render/overlay.js       2D overlay: skeleton, labels, guides
 js/body/parts.js           Body-part regions and detailed identifier
 js/body/measure.js         Measurements from the segmentation mask
 js/body/history.js         Saved measurement history
-js/exercises/*.js          Exercise engine and the 8 exercises
+js/exercises/*.js          Exercise engine, measuring kit and the 88 exercises
+js/program.js              Weekly program, skill ladders, equipment alternates
 js/ui/*.js                 Home, Body Scan, exercise and Measure views, settings
 tests/                     Tests, 3D test body, recorded fixtures
 ```

@@ -2,8 +2,8 @@ import { P, vis, toPx, angleFn, Ema, SidePicker } from '../geometry.js';
 import { RepCounter } from './base.js';
 
 const SIDES = {
-  left: { sh: P.leftShoulder, el: P.leftElbow, wr: P.leftWrist, hip: P.leftHip, knee: P.leftKnee, ank: P.leftAnkle },
-  right: { sh: P.rightShoulder, el: P.rightElbow, wr: P.rightWrist, hip: P.rightHip, knee: P.rightKnee, ank: P.rightAnkle },
+  left: { sh: P.leftShoulder, el: P.leftElbow, wr: P.leftWrist, hip: P.leftHip, knee: P.leftKnee, ank: P.leftAnkle, heel: P.leftHeel, toe: P.leftFoot },
+  right: { sh: P.rightShoulder, el: P.rightElbow, wr: P.rightWrist, hip: P.rightHip, knee: P.rightKnee, ank: P.rightAnkle, heel: P.rightHeel, toe: P.rightFoot },
 };
 
 /**
@@ -29,6 +29,11 @@ export class PushupAnalyzer extends RepCounter {
     riseFraction: 0.6, // shoulders must climb back this share of the way up
     dropShare: 0.5, // shoulders must come down at least this share of what the target elbow angle implies
     bounce: 0.5,
+    // Push-ups often start lying on the floor (hand-release push-ups always
+    // do), and pressing up from there is a real rep, so no need to start at the top.
+    armAtStart: false,
+    feetUp: false, // decline push-ups: feet up on a bench
+    feetUpMin: 0.75, // ...this high above the hands (torso lengths) to start, and 0.6 all the way through
   };
   static statLabels = ['Elbow', 'Body'];
   static meterLabel = 'depth';
@@ -42,6 +47,7 @@ export class PushupAnalyzer extends RepCounter {
     incomplete: { rep: 'straighten your arms at the top', voice: 'Lock out' },
     faults: {
       drop: { rep: 'chest didn’t go down', miss: 'Not counted — lower your whole body, not just your elbows', missVoice: 'Chest down' },
+      feet: { rep: 'feet came off the bench', miss: 'Not counted — keep your feet up on the bench', missVoice: 'Feet up' },
       sag: { live: 'Hips sagging — squeeze your glutes and brace', rep: 'hips sagged, keep one straight line', voice: 'Keep your hips up', cue: 'Tighten your core' },
       pike: { live: 'Hips too high — lower them into a straight line', rep: 'hips were too high', voice: 'Lower your hips', cue: 'Hips down' },
     },
@@ -86,6 +92,13 @@ export class PushupAnalyzer extends RepCounter {
     if ((Math.atan2(Math.abs(dy), Math.abs(dx)) * 180) / Math.PI > o.maxIncline) {
       return { status: 'setup', message: 'Get into a plank: hands under shoulders, body straight' };
     }
+    const feet = [S.ank, S.heel, S.toe].filter((i) => vis(lm[i]) >= 0.4).map((i) => px(i).y);
+    const torsoLen = Math.hypot(hip.x - sh.x, hip.y - sh.y) || 1;
+    // Feet height above the hands, in torso lengths (a bench is about one).
+    const feetUp = feet.length ? (wr.y - Math.max(...feet)) / torsoLen : 0;
+    if (o.feetUp && this.phase !== 'down' && feetUp < o.feetUpMin) {
+      return { status: 'setup', message: 'Put your feet up on the bench', say: 'Feet up on the bench' };
+    }
 
     const angle = angleFn(frame, source === 'auto' ? '2d' : source);
     const elbow = this.elbowEma.next(angle(S.sh, S.el, S.wr));
@@ -107,6 +120,7 @@ export class PushupAnalyzer extends RepCounter {
       status: 'active',
       progress: (o.topAngle - elbow) / (o.topAngle - o.depthTarget),
       faults,
+      feetUp,
       height,
       shoulderY: sh.y,
       arm,
@@ -130,7 +144,7 @@ export class PushupAnalyzer extends RepCounter {
 
   repState(m, prev) {
     const start = prev ? prev.backM : m;
-    return { startHeight: start.height, minHeight: m.height, topY: start.shoulderY, lowY: m.shoulderY, arm: m.arm };
+    return { startHeight: start.height, minHeight: m.height, topY: start.shoulderY, lowY: m.shoulderY, arm: m.arm, minFeet: m.feetUp ?? Infinity };
   }
 
   trackRep(r, m) {
@@ -138,6 +152,7 @@ export class PushupAnalyzer extends RepCounter {
     r.topY = Math.min(r.topY, m.shoulderY);
     r.lowY = Math.max(r.lowY, m.shoulderY);
     r.arm = Math.max(r.arm, m.arm);
+    if (m.feetUp != null) r.minFeet = Math.min(r.minFeet, m.feetUp);
   }
 
   repBlocks(r) {
@@ -146,7 +161,9 @@ export class PushupAnalyzer extends RepCounter {
     // the target angle says how far the shoulders should travel down.
     const o = this.opts;
     const expected = Math.sin((o.topAngle * Math.PI) / 360) - Math.sin((o.depthTarget * Math.PI) / 360);
-    return (r.lowY - r.topY) / r.arm < o.dropShare * expected ? ['drop'] : [];
+    const out = (r.lowY - r.topY) / r.arm < o.dropShare * expected ? ['drop'] : [];
+    if (o.feetUp && r.minFeet < 0.8 * o.feetUpMin) out.push('feet');
+    return out;
   }
 
   canFinish(m, r) {

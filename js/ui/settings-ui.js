@@ -51,6 +51,19 @@ export function bindSettings(app, hooks) {
   toggle('setLabels', 'labels');
   toggle('setVoice', 'voice', hooks.voice);
 
+  // Equipment: what you set here wins over what Bartleby saved.
+  const kitBoxes = { bar: $('setKitBar'), wheel: $('setKitWheel'), barbell: $('setKitBarbell') };
+  const showKit = () => Object.entries(kitBoxes).forEach(([k, el]) => (el.checked = !!s.kit[k]));
+  for (const [k, el] of Object.entries(kitBoxes)) {
+    el.addEventListener('change', () => {
+      s.kitSet = { ...s.kitSet, [k]: el.checked };
+      s.kit = { ...s.kit, [k]: el.checked };
+      app.persist();
+      hooks.program?.();
+    });
+  }
+  showKit();
+
   const dim = $('setDim');
   const dimOut = $('setDimVal');
   const showDim = () => (dimOut.textContent = `${Math.round((1 - s.dim) * 100)}%`);
@@ -134,6 +147,7 @@ export function bindSettings(app, hooks) {
     refresh() {
       showHeight();
       showWeight();
+      showKit();
       $('setSex').value = s.sex || '';
       document.querySelectorAll('input[name="model"]').forEach((r) => (r.checked = r.value === s.model));
     },

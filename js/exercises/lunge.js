@@ -21,6 +21,7 @@ export class LungeAnalyzer extends RepCounter {
     targetAngle: 95,
     maxLean: 30,
     minDrop: 0.2, // hips must drop this share of their standing height
+    minSplit: 0.3, // feet this far apart front-to-back at the bottom (metres, 3D)
     minRepMs: 500,
   };
   static statLabels = ['Front knee', 'Lean'];
@@ -35,6 +36,7 @@ export class LungeAnalyzer extends RepCounter {
     incomplete: { rep: 'stand all the way up between reps', voice: 'Stand tall' },
     faults: {
       drop: { rep: 'hips didn’t go down', miss: 'Not counted — step out and lower your hips, don’t just bend a knee', missVoice: 'Hips down' },
+      stance: { rep: 'feet side by side', miss: 'Not counted — step one foot forward or back into a lunge; that was a squat', missVoice: 'Step into a lunge' },
       lean: { live: 'Keep your chest up — torso is leaning forward', rep: 'torso leaned forward', voice: 'Chest up', cue: 'Chest up' },
     },
   };
@@ -89,12 +91,22 @@ export class LungeAnalyzer extends RepCounter {
     const F = LEGS[f];
     const B = LEGS[1 - f];
     const k = Math.round(kneeAngle);
+    // Front-to-back distance between the feet (3D): across the line of the hips.
+    let split = null;
+    const W = frame.world;
+    if (W) {
+      const hx = W[P.rightHip].x - W[P.leftHip].x, hz = W[P.rightHip].z - W[P.leftHip].z;
+      const hl = Math.hypot(hx, hz) || 1;
+      const dx = W[P.leftAnkle].x - W[P.rightAnkle].x, dz = W[P.leftAnkle].z - W[P.rightAnkle].z;
+      split = Math.abs(dx * (-hz / hl) + dz * (hx / hl));
+    }
     return {
       status: 'active',
       progress,
       faults,
       kneeAngle,
       drop,
+      split,
       stats: [
         { label: 'Front knee', value: `${k}°` },
         { label: 'Lean', value: `${Math.round(lean)}°`, fault: 'lean' },
@@ -112,16 +124,20 @@ export class LungeAnalyzer extends RepCounter {
   }
 
   repState(m) {
-    return { minKnee: m.kneeAngle, maxDrop: m.drop };
+    return { minKnee: m.kneeAngle, maxDrop: m.drop, maxSplit: m.split };
   }
 
   trackRep(r, m) {
     r.minKnee = Math.min(r.minKnee, m.kneeAngle);
     if (m.drop != null) r.maxDrop = Math.max(r.maxDrop ?? -Infinity, m.drop);
+    if (m.split != null) r.maxSplit = Math.max(r.maxSplit ?? 0, m.split);
   }
 
   repBlocks(r) {
-    return r.maxDrop != null && r.maxDrop < this.opts.minDrop ? ['drop'] : [];
+    const out = [];
+    if (r.maxDrop != null && r.maxDrop < this.opts.minDrop) out.push('drop');
+    if (r.maxSplit != null && r.maxSplit < this.opts.minSplit) out.push('stance');
+    return out;
   }
 
   repDetail(r) {

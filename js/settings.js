@@ -1,3 +1,5 @@
+import { KIT_DEFAULTS, fromBartleby } from './program.js';
+
 const KEY = 'gymvision.settings.v1';
 
 const usesInches = () => {
@@ -29,20 +31,40 @@ export const DEFAULTS = {
   weightKg: null,
   weightUnit: usesInches() ? 'lb' : 'kg',
   guidesSeen: {},
+  // Your program: equipment and skill-ladder steps you set here (kitSet, levelSet)
+  // win over the ones Bartleby saved; kit and levels are what's in effect.
+  kitSet: {},
+  levelSet: {},
+  kit: { ...KIT_DEFAULTS },
+  levels: {},
 };
 
 export function loadSettings() {
+  let saved = {};
   try {
-    const saved = JSON.parse(localStorage.getItem(KEY) || '{}');
-    return { ...DEFAULTS, ...saved, layers: { ...DEFAULTS.layers, ...(saved.layers || {}) }, guidesSeen: { ...(saved.guidesSeen || {}) } };
+    saved = JSON.parse(localStorage.getItem(KEY) || '{}');
   } catch {
-    return structuredClone(DEFAULTS);
+    saved = {};
   }
+  const b = fromBartleby();
+  const kitSet = { ...(saved.kitSet || {}) };
+  const levelSet = { ...(saved.levelSet || {}) };
+  return {
+    ...DEFAULTS,
+    ...saved,
+    layers: { ...DEFAULTS.layers, ...(saved.layers || {}) },
+    guidesSeen: { ...(saved.guidesSeen || {}) },
+    kitSet,
+    levelSet,
+    kit: { ...KIT_DEFAULTS, ...b.kit, ...kitSet },
+    levels: { ...b.levels, ...levelSet },
+  };
 }
 
 export function saveSettings(settings) {
   try {
-    localStorage.setItem(KEY, JSON.stringify(settings));
+    const { kit, levels, ...rest } = settings; // derived on load
+    localStorage.setItem(KEY, JSON.stringify(rest));
   } catch {
     // Private mode or blocked storage: settings just won't persist.
   }

@@ -1,18 +1,28 @@
-import { $, setText, banner } from './dom.js';
+import { $, setText, banner, h } from './dom.js';
 import { figure } from './icons.js';
 
-/** An exercise session: runs the analyzer and drives the stats dock. */
+/**
+ * An exercise session: runs the analyzer, drives the stats dock and speaks.
+ *
+ * Voice: rep counts, why a rep didn't count, form cues as they happen, and
+ * setup help ("Turn side-on…") when you're in view but not in position —
+ * before your first rep, or when you lose position mid-set, never while
+ * you're resting between sets.
+ */
 export class ExerciseTool {
-  constructor(app, entry) {
+  /** @param meta { name, rx } when opened from your program */
+  constructor(app, entry, meta = null) {
     this.app = app;
     this.kind = 'exercise';
     this.entry = entry;
-    this.title = entry.name;
-    this.hint = `${entry.view} · ${entry.blurb}`;
+    this.meta = meta;
+    this.title = meta?.name || entry.name;
+    this.hint = [meta?.rx, entry.view, entry.blurb].filter(Boolean).join(' · ');
     this.analyzer = entry.create(app.settings);
     this.view = null;
     this.notReadySince = null;
     this.dotsKey = -1;
+    this.resetVoice();
   }
 
   get needsMasks() {
@@ -23,11 +33,23 @@ export class ExerciseTool {
     return false;
   }
 
+  resetVoice() {
+    this.setupMsg = null;
+    this.setupSince = 0;
+    this.setupSpoken = false;
+    this.everActive = false;
+    this.lastActive = -Infinity;
+    this.lastDone = -Infinity;
+  }
+
   enter() {
-    $('guideArt').innerHTML = figure(this.entry.id);
-    $('guideSteps').replaceChildren(...this.entry.setup.map((s) => Object.assign(document.createElement('li'), { textContent: s })));
+    const e = this.entry;
+    $('guideArt').innerHTML = figure(e.fig || e.id);
+    $('guideSteps').replaceChildren(...e.setup.map((s) => h('li', {}, s)));
+    $('guideChecks').replaceChildren(...(e.checks || []).map((s) => h('li', {}, s)));
     this.notReadySince = null;
     this.dotsKey = -1;
+    this.resetVoice();
     this.render(this.analyzer.update({ lm: null, t: 0 }).hud);
   }
 
@@ -43,6 +65,7 @@ export class ExerciseTool {
   reset() {
     this.analyzer.reset();
     this.dotsKey = -1;
+    this.resetVoice();
     this.render(this.analyzer.update({ lm: null, t: 0 }).hud);
   }
 
@@ -54,11 +77,12 @@ export class ExerciseTool {
     const view = this.analyzer.update(frame, this.app.angleSource());
     this.view = view;
     for (const ev of view.events) {
-      if (ev.type === 'rep' && ev.rep.counted) this.bump();
-      if (ev.type === 'set') this.bump();
+      if ((ev.type === 'rep' && ev.rep.counted) || ev.type === 'set') this.bump();
+      if (ev.type === 'rep' || ev.type === 'set') this.lastDone = frame.t;
       const line = this.analyzer.voiceLine(ev);
       if (line) this.app.voice.say(line, ev.type === 'cue' ? { key: ev.key, gapMs: 2500 } : {});
     }
+    this.speakSetup(view, frame.t);
     banner(view.message, view.tone);
     this.render(view.hud);
 
@@ -68,6 +92,30 @@ export class ExerciseTool {
     const seen = this.app.settings.guidesSeen[this.entry.id];
     $('guide').hidden = !(notReady && !seen && this.analyzer.count === 0 && frame.t - this.notReadySince > 1200);
     return { outline: false };
+  }
+
+  /** Say what to fix to get in position, once per message, if it's worth saying now. */
+  speakSetup(view, t) {
+    if (view.status === 'active') {
+      this.everActive = true;
+      this.lastActive = t;
+      this.setupMsg = null;
+      return;
+    }
+    if (view.status !== 'setup' && view.status !== 'partial') return;
+    const say = view.say || view.message;
+    if (!say) return;
+    if (say !== this.setupMsg) {
+      this.setupMsg = say;
+      this.setupSince = t;
+      this.setupSpoken = false;
+    }
+    // Before the first rep; or lost position mid-set (recently active, no rep/hold just finished).
+    const worth = !this.everActive || (t - this.lastActive < 6000 && t - this.lastDone > 8000);
+    if (!this.setupSpoken && worth && t - this.setupSince > 2500) {
+      this.setupSpoken = true;
+      this.app.voice.say(say, { key: `setup:${say}`, gapMs: 15000 });
+    }
   }
 
   draw(overlay, frame) {

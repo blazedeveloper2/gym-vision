@@ -25,6 +25,7 @@ export class LateralRaiseAnalyzer extends RepCounter {
     minElbow: 120,
     maxUneven: 20,
     minSideways: 0.65, // upper arm's on-screen length at the top vs hanging
+    overhead: 135, // arms above this (deg) = pressing, not raising
   };
   static statLabels = ['Arms', 'Elbows'];
   static meterLabel = 'height';
@@ -39,6 +40,7 @@ export class LateralRaiseAnalyzer extends RepCounter {
     incomplete: { rep: 'lower your arms all the way between reps', voice: 'All the way down' },
     faults: {
       forward: { rep: 'arms went forward', miss: 'Not counted — raise your arms out to the sides, not in front', missVoice: 'Out to the sides' },
+      overhead: { rep: 'arms went overhead', miss: 'Not counted — raise to shoulder height; overhead is a press', missVoice: 'Shoulder height' },
       high: { live: 'Stop at shoulder height', rep: 'arms went above shoulder height', voice: 'Stop at shoulders', cue: 'Shoulder height' },
       bent: { live: 'Keep your arms almost straight', rep: 'elbows bent too much', voice: 'Straighter arms', cue: 'Straighter arms' },
       uneven: { live: 'Raise both arms evenly', rep: 'arms were uneven', voice: 'Even arms', cue: 'Even arms' },
@@ -106,6 +108,7 @@ export class LateralRaiseAnalyzer extends RepCounter {
       progress,
       faults,
       sideways,
+      maxAbd: Math.max(...seen.map((a) => a.abd)),
       stats: [
         { label: 'Arms', value: seen.map((a) => `${Math.round(a.abd)}°`).join(' / '), fault: 'high|uneven' },
         { label: 'Elbows', value: seen.map((a) => `${Math.round(a.elbow)}°`).join(' / '), fault: 'bent' },
@@ -115,15 +118,19 @@ export class LateralRaiseAnalyzer extends RepCounter {
   }
 
   repState(m) {
-    return { sideways: null };
+    return { sideways: null, maxAbd: m.maxAbd };
   }
 
   trackRep(r, m, p) {
     // Judge the arm near the top of the raise, where forward vs sideways differ most.
     if (p > 0.6 && m.sideways != null) r.sideways = Math.min(r.sideways ?? Infinity, m.sideways);
+    r.maxAbd = Math.max(r.maxAbd, m.maxAbd);
   }
 
   repBlocks(r) {
-    return r.sideways != null && r.sideways < this.opts.minSideways ? ['forward'] : [];
+    const out = [];
+    if (r.sideways != null && r.sideways < this.opts.minSideways) out.push('forward');
+    if (r.maxAbd > this.opts.overhead) out.push('overhead');
+    return out;
   }
 }

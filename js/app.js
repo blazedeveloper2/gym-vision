@@ -10,7 +10,7 @@ import { exerciseById } from './exercises/index.js';
 import { ScanTool } from './ui/scan.js';
 import { ExerciseTool } from './ui/exercise.js';
 import { MeasureTool } from './ui/measure-ui.js';
-import { buildHome, buildPicker } from './ui/home.js';
+import { Home, buildPicker } from './ui/home.js';
 import { bindSettings } from './ui/settings-ui.js';
 import { icon } from './ui/icons.js';
 import { $, h, setText, toast, banner, loading } from './ui/dom.js';
@@ -66,7 +66,8 @@ class App {
     for (const id of ['versionTag', 'versionTag2']) $(id).textContent = `v${APP_VERSION}`;
     for (const id of ['repoLink', 'repoLink2']) $(id).href = REPO_URL;
 
-    buildHome({ onOpen: (kind) => this.open(kind) });
+    this.home = new Home(this, { onOpen: (kind, meta) => this.open(kind, null, meta) });
+    this.home.build();
     buildPicker({
       onPick: (kind) => {
         $('analyzeDialog').close();
@@ -79,6 +80,7 @@ class App {
       mirror: () => this.applyMirror(),
       exercise: () => this.tool?.applySettings?.(),
       profile: () => this.scan.resolveTap(),
+      program: () => this.home.refresh(),
       voice: (on) => {
         this.voice.enabled = on;
         if (on) this.voice.unlock();
@@ -222,28 +224,30 @@ class App {
 
   // ------------------------------------------------------------ sessions
 
-  makeTool(kind) {
+  makeTool(kind, meta = null) {
     if (kind === 'scan') return this.scan;
     if (kind === 'measure') return this.measure;
     const entry = kind?.startsWith('exercise:') && exerciseById(kind.slice(9));
-    return entry ? new ExerciseTool(this, entry) : null;
+    return entry ? new ExerciseTool(this, entry, meta) : null;
   }
 
   /**
    * Opens a tool with the camera (src = null), a File, or a video URL.
+   * `meta` ({ name, rx }) names it the way your program does.
    */
-  async open(kind, src = null) {
+  async open(kind, src = null, meta = null) {
     if (this.opening) return;
     this.opening = true;
     try {
       this.voice.unlock();
-      const tool = this.makeTool(kind);
+      const tool = this.makeTool(kind, meta);
       if (!tool) return;
       if (tool.kind === 'measure' && !this.settings.heightCm && !(await this.askHeight())) return;
 
       this.tool?.exit?.();
       this.tool = tool;
       this.currentKind = kind;
+      this.currentMeta = meta;
       this.showSession(tool);
       tool.enter();
 
@@ -399,8 +403,9 @@ class App {
     const kind = this.pendingKind;
     this.pendingKind = null;
     if (kind && (!this.tool || kind !== this.currentKind || !$('sessionError').hidden)) {
+      const meta = kind === this.currentKind ? this.currentMeta : null;
       if (this.tool) this.close(true);
-      return this.open(kind, file);
+      return this.open(kind, file, meta);
     }
     if (!this.tool) return;
     loading('Loading video…');

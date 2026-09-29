@@ -2,8 +2,8 @@ import { P, vis, toPx, angleFn, Ema, SidePicker, FacingTracker, mid, leanDeg } f
 import { RepCounter } from './base.js';
 
 const SIDES = {
-  left: { sh: P.leftShoulder, hip: P.leftHip, knee: P.leftKnee, ank: P.leftAnkle },
-  right: { sh: P.rightShoulder, hip: P.rightHip, knee: P.rightKnee, ank: P.rightAnkle },
+  left: { sh: P.leftShoulder, el: P.leftElbow, wr: P.leftWrist, hip: P.leftHip, knee: P.leftKnee, ank: P.leftAnkle },
+  right: { sh: P.rightShoulder, el: P.rightElbow, wr: P.rightWrist, hip: P.rightHip, knee: P.rightKnee, ank: P.rightAnkle },
 };
 const FRONT_NEEDED = [
   P.leftShoulder, P.rightShoulder, P.leftHip, P.rightHip,
@@ -23,6 +23,10 @@ export const SQUAT_TARGETS = {
  * Squats, side-on (depth + torso lean) or facing the camera (depth + knees
  * caving in). Depth compares hip height to knee height, scaled by thigh
  * length learned while standing, so it reads the same from either angle.
+ *
+ * `hold` adds the checks for where the weight is, side-on: 'front' (a bar in
+ * the front rack — the elbows stay up) or 'goblet' (a dumbbell held against
+ * the chest).
  */
 export class SquatAnalyzer extends RepCounter {
   static defaults = {
@@ -33,6 +37,9 @@ export class SquatAnalyzer extends RepCounter {
     valgusRatio: 0.85, // front view: knee width / ankle width below this = knees caving in
     holdMs: 300,
     minRepMs: 500,
+    hold: null, // null | 'front' | 'goblet'
+    elbowDrop: 35, // front rack: upper arm below horizontal (deg)
+    driftBy: 0.6, // goblet: hands this far in front of the torso line (torso lengths)
   };
   static statLabels = ['Knee', 'Lean'];
   static meterLabel = 'depth';
@@ -48,6 +55,8 @@ export class SquatAnalyzer extends RepCounter {
       bend: { rep: 'knees barely bent', miss: 'Not counted — bend your knees and sit down into it', missVoice: 'Bend your knees' },
       lean: { live: 'Chest up — you’re leaning too far forward', rep: 'chest dropped forward', voice: 'Chest up', cue: 'Chest up' },
       knees: { live: 'Push your knees out over your toes', rep: 'knees caved in', voice: 'Knees out', cue: 'Knees out' },
+      elbows: { live: 'Elbows up — keep the bar high on your shoulders', rep: 'elbows dropped', voice: 'Elbows up', cue: 'Elbows up' },
+      drift: { live: 'Keep the dumbbell tight against your chest', rep: 'dumbbell drifted forward', voice: 'Weight to your chest', cue: 'Weight to your chest' },
     },
   };
 
@@ -134,6 +143,17 @@ export class SquatAnalyzer extends RepCounter {
     if (depth >= o.checkFrom) {
       if (!front && lean > o.maxLean) faults.push('lean');
       else if (front && kneeWidth < o.valgusRatio) faults.push('knees');
+    }
+    if (!front && o.hold === 'front' && vis(lm[S.el]) >= 0.5) {
+      const el = px(S.el), s0 = px(S.sh);
+      if ((Math.atan2(el.y - s0.y, Math.abs(el.x - s0.x)) * 180) / Math.PI > o.elbowDrop) faults.push('elbows');
+    }
+    if (!front && o.hold === 'goblet' && vis(lm[S.wr]) >= 0.5) {
+      // Hands' distance in front of the hip–shoulder line.
+      const wr = px(S.wr), s0 = px(S.sh), h0 = px(S.hip);
+      const tl = Math.hypot(s0.x - h0.x, s0.y - h0.y) || 1;
+      const off = Math.abs((s0.x - h0.x) * (wr.y - h0.y) - (s0.y - h0.y) * (wr.x - h0.x)) / tl;
+      if (off / tl > o.driftBy) faults.push('drift');
     }
 
     const k = Math.round(kneeAngle);

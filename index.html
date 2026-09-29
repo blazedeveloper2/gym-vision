@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Gym Vision</title>
-  <meta name="description" content="AI body camera: live body tracking, body-part identifier, body measurements and exercise form feedback. Runs entirely on your device.">
+  <meta name="description" content="AI body camera: your workouts with rep counting, form feedback and voice cues, plus live body tracking, a body-part identifier and body measurements. Runs entirely on your device.">
   <meta name="theme-color" content="#07090d">
   <meta name="color-scheme" content="dark">
   <meta name="mobile-web-app-capable" content="yes">
@@ -33,34 +33,55 @@
       <button type="button" class="icon-btn" data-action="settings" aria-label="Settings" title="Settings"></button>
     </header>
 
-    <section class="home-section" aria-labelledby="toolsTitle">
-      <h2 class="section-title" id="toolsTitle">Body tools</h2>
-      <button type="button" class="tool-card hero" data-open="scan">
-        <span class="tool-art" data-fig="scan"></span>
-        <span class="tool-text">
-          <strong>Body Scan</strong>
-          <span>Live skeleton, glowing body outline and a body-part identifier. Tap any part to name it.</span>
-        </span>
-        <span class="chev" data-ico="chevron"></span>
-      </button>
-      <div class="tool-row">
-        <button type="button" class="tool-card" data-open="measure">
-          <span class="tool-art small" data-fig="measure"></span>
-          <strong>Measure</strong>
-          <span>Arms, chest, waist, legs. Track your growth.</span>
-        </button>
-        <button type="button" class="tool-card" data-action="analyze">
-          <span class="tool-art small" data-fig="video"></span>
-          <strong>Analyze video</strong>
-          <span>Check a clip you recorded.</span>
-        </button>
-      </div>
+    <label class="search">
+      <span class="search-ico" data-ico="search"></span>
+      <input type="search" id="exSearch" placeholder="Search all exercises" autocomplete="off" enterkeyhint="search" aria-label="Search all exercises">
+    </label>
+
+    <section class="home-section" id="searchSection" aria-labelledby="searchTitle" hidden>
+      <h2 class="section-title" id="searchTitle">Results <span class="count" id="searchCount"></span></h2>
+      <div class="ex-list card" id="searchResults"></div>
     </section>
 
-    <section class="home-section" aria-labelledby="exTitle">
-      <h2 class="section-title" id="exTitle">Exercises <span class="count" id="exCount"></span></h2>
-      <div class="ex-grid" id="exGrid"></div>
-    </section>
+    <div id="browse">
+      <section class="home-section" aria-labelledby="wkTitle">
+        <div class="section-head">
+          <h2 class="section-title" id="wkTitle">My workouts</h2>
+          <button type="button" class="link-btn" id="btnLadders"><span data-ico="ladder"></span>Skill levels</button>
+        </div>
+        <div class="day-tabs" id="dayTabs" role="tablist" aria-label="Day of your program"></div>
+        <div class="day-card card" id="dayCard" role="tabpanel" aria-labelledby="wkTitle"></div>
+      </section>
+
+      <section class="home-section" aria-labelledby="exTitle">
+        <h2 class="section-title" id="exTitle">General exercises <span class="count" id="exCount"></span></h2>
+        <div class="ex-grid" id="exGrid"></div>
+      </section>
+
+      <section class="home-section" aria-labelledby="toolsTitle">
+        <h2 class="section-title" id="toolsTitle">Body tools</h2>
+        <button type="button" class="tool-card hero" data-open="scan">
+          <span class="tool-art" data-fig="scan"></span>
+          <span class="tool-text">
+            <strong>Body Scan</strong>
+            <span>Live skeleton, glowing body outline and a body-part identifier. Tap any part to name it.</span>
+          </span>
+          <span class="chev" data-ico="chevron"></span>
+        </button>
+        <div class="tool-row">
+          <button type="button" class="tool-card" data-open="measure">
+            <span class="tool-art small" data-fig="measure"></span>
+            <strong>Measure</strong>
+            <span>Arms, chest, waist, legs. Track your growth.</span>
+          </button>
+          <button type="button" class="tool-card" data-action="analyze">
+            <span class="tool-art small" data-fig="video"></span>
+            <strong>Analyze video</strong>
+            <span>Check a clip you recorded.</span>
+          </button>
+        </div>
+      </section>
+    </div>
 
     <footer class="home-foot">
       <div class="install" id="installHint" hidden>
@@ -162,7 +183,10 @@
 
     <aside class="guide card" id="guide" hidden>
       <div class="guide-art" id="guideArt"></div>
+      <h3 class="guide-title">Set up</h3>
       <ol id="guideSteps"></ol>
+      <h3 class="guide-title">What counts</h3>
+      <ul id="guideChecks"></ul>
       <button type="button" class="chip" id="btnGuideHide">Got it</button>
     </aside>
 
@@ -228,6 +252,12 @@
             <select id="setWeightUnit" aria-label="Weight units"><option value="kg">kg</option><option value="lb">lb</option></select>
           </div>
         </div>
+
+        <h3 class="group-title">Your equipment</h3>
+        <p class="hint">Your workouts swap in the no-equipment alternatives for anything you switch off, like your Bartleby app does.</p>
+        <label class="switch"><span>Pull-up bar<small>Off: rows, reverse crunches, snow angels</small></span><input type="checkbox" id="setKitBar"></label>
+        <label class="switch"><span>Ab wheel<small>Off: dumbbell crunches and hollow holds</small></span><input type="checkbox" id="setKitWheel"></label>
+        <label class="switch"><span>Barbell<small>Off: goblet squats, dumbbell RDLs, B-stance thrusts</small></span><input type="checkbox" id="setKitBarbell"></label>
 
         <h3 class="group-title">Tracking</h3>
         <div class="field">
@@ -307,6 +337,16 @@
     <form method="dialog">
       <div class="sheet-head"><h2 id="analyzeTitle">What’s in the video?</h2><button class="chip" value="close">Cancel</button></div>
       <div class="sheet-body"><div class="pick-list" id="pickList"></div></div>
+    </form>
+  </dialog>
+
+  <dialog class="sheet wide" id="ladderDialog" aria-labelledby="ladderTitle">
+    <form method="dialog">
+      <div class="sheet-head"><h2 id="ladderTitle">Skill levels</h2><button class="chip" value="close">Done</button></div>
+      <div class="sheet-body">
+        <p class="hint">Tick the step you’re on in each ladder; your workouts show that step. Tap any step to start it.</p>
+        <div id="ladderBody"></div>
+      </div>
     </form>
   </dialog>
 

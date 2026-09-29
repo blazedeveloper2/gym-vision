@@ -11,13 +11,24 @@ const ARMS = [
  * shoulders in arm lengths: ~0.45 with the weights at the shoulders, ~0.92
  * with straight arms overhead. Both arms must press (or one, for a
  * single-arm press).
+ *
+ * You sit or stand upright (lying on a bench, that's a bench press), and the
+ * weights have to actually travel up and down: relative to the body a
+ * pull-up looks the same, but there the hands stay put and the body moves.
  */
+/** Torso tilt from vertical in 3D (world landmarks: y points down). */
+const lean3d = (top, bottom) => {
+  const v = { x: top.x - bottom.x, y: top.y - bottom.y, z: top.z - bottom.z };
+  return (Math.acos(clamp(-v.y / (Math.hypot(v.x, v.y, v.z) || 1), -1, 1)) * 180) / Math.PI;
+};
+
 export class PressAnalyzer extends RepCounter {
   static defaults = {
     rest: 0.45,
     top: 0.92,
     maxUneven: 0.3,
     maxLean: 20,
+    minTravel: 0.3, // the hands must travel at least this far (arm lengths) in a rep
   };
   static statLabels = ['Elbows', 'Lean'];
   static meterLabel = 'height';
@@ -33,6 +44,7 @@ export class PressAnalyzer extends RepCounter {
     faults: {
       uneven: { live: 'Press evenly with both arms', rep: 'arms were uneven', voice: 'Even arms', cue: 'Even arms' },
       lean: { live: 'Don’t lean back — keep your ribs down', rep: 'leaned back', voice: 'Stay tall', cue: 'Ribs down' },
+      still: { rep: 'the weights didn’t move', miss: 'Not counted — press the weights up; your body stays still', missVoice: 'Press the weights' },
     },
   };
 
@@ -45,6 +57,7 @@ export class PressAnalyzer extends RepCounter {
     this.heightEmas = [new Ema(0.5), new Ema(0.5)];
     this.elbowEmas = [new Ema(0.5), new Ema(0.5)];
     this.leanEma = new Ema(0.4);
+    this.lean3Ema = new Ema(0.3);
   }
 
   measure(frame, source) {
@@ -68,9 +81,13 @@ export class PressAnalyzer extends RepCounter {
 
     const progress = up.length === 2 ? Math.min(up[0].p, up[1].p) : up[0].p;
     const hipsSeen = vis(lm[P.leftHip]) >= 0.5 && vis(lm[P.rightHip]) >= 0.5;
-    const lean = hipsSeen
-      ? this.leanEma.next(leanDeg(mid(px(P.leftShoulder), px(P.rightShoulder)), mid(px(P.leftHip), px(P.rightHip))))
-      : null;
+    const leanNow = hipsSeen ? leanDeg(mid(px(P.leftShoulder), px(P.rightShoulder)), mid(px(P.leftHip), px(P.rightHip))) : null;
+    // Filmed from the front, lying back on an incline bench looks upright on
+    // screen; the 3D landmarks show the torso tipped away from the camera.
+    const wl = frame.world;
+    const lean3 = hipsSeen && wl ? this.lean3Ema.next(lean3d(mid(wl[P.leftShoulder], wl[P.rightShoulder]), mid(wl[P.leftHip], wl[P.rightHip]))) : null;
+    if ((leanNow != null && leanNow > 30) || (lean3 != null && lean3 > 30)) return { status: 'setup', message: 'Sit or stand up tall to press', say: 'Sit up tall' };
+    const lean = leanNow == null ? null : this.leanEma.next(leanNow);
 
     const faults = [];
     if (up.length === 2 && Math.max(up[0].p, up[1].p) > 0.3 && Math.abs(up[0].p - up[1].p) > o.maxUneven) faults.push('uneven');
@@ -88,15 +105,30 @@ export class PressAnalyzer extends RepCounter {
         { type: 'dots', ids: [arm.sh, arm.el, arm.wr], tone: 'fault:uneven' },
       );
     }
+    const lead = up.reduce((a, b) => (b.p < a.p ? b : a));
     return {
       status: 'active',
       progress: clamp(progress, -1, 2),
       faults,
+      handY: px(lead.wr).y / lead.len,
       stats: [
         { label: 'Elbows', value: seen.map((a) => `${Math.round(a.elbow)}°`).join(' / ') },
         { label: 'Lean', value: lean == null ? '–' : `${Math.round(lean)}°`, fault: 'lean' },
       ],
       overlay,
     };
+  }
+
+  repState(m) {
+    return { handLo: m.handY, handHi: m.handY };
+  }
+
+  trackRep(r, m) {
+    r.handLo = Math.max(r.handLo, m.handY);
+    r.handHi = Math.min(r.handHi, m.handY);
+  }
+
+  repBlocks(r) {
+    return r.handLo - r.handHi < this.opts.minTravel ? ['still'] : [];
   }
 }
